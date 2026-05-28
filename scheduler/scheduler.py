@@ -47,7 +47,7 @@ def update_loads():
 
 if __name__ == "__main__":
     logging.info("Scheduler 시작")
-    update_loads()  # 시작 시 1회 즉시 실행
+    update_loads()
 
     scheduler = BlockingScheduler()
     scheduler.add_job(update_loads, "interval", hours=1)

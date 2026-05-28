@@ -25,15 +25,19 @@ class ActionSchema(TypedDict):
     latency_ms:    int
 
 class StateSchema(TypedDict):
-    available_capa:    Optional[dict]
     required_capa:     Optional[int]
+    # Tool 호출 원시 데이터 (LLM이 직접 분석)
+    capacity_raw:      Optional[dict]
+    mold_raw:          Optional[dict]
+    schedule_raw:      Optional[dict]
+    competing_orders:  Optional[list]
+    # LLM 분석 결과 (generate_result 이후 채워짐)
+    available_capa:    Optional[dict]
     capa_gap:          Optional[int]
     feasible:          Optional[bool]
     bottleneck:        Optional[str]
-    competing_orders:  Optional[list]
-    # 확장 예약 필드 (멀티 에이전트 전환 시 타 에이전트가 채움)
-    material_shortage: Optional[bool]
     mold_setup_hours:  Optional[float]
+    material_shortage: Optional[bool]
 
 class AlternativeScenario(TypedDict):
     scenario_id:    str
@@ -44,9 +48,12 @@ class AlternativeScenario(TypedDict):
     cost_impact:    Optional[str]
 
 class ResultSchema(TypedDict):
-    feasible:     Optional[bool]
-    summary:      str
-    alternatives: Optional[list]
+    feasible:      Optional[bool]
+    summary:       str
+    alternatives:  Optional[list]
+    machine_capa:  Optional[dict]   # 사출기별 가용 CAPA
+    total_avail:   Optional[int]    # 총 가용 CAPA
+    total_competing: Optional[int]  # 경합 수주 총량
 
 class RecoverySchema(TypedDict):
     triggered:        bool

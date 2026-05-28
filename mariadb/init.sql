@@ -58,36 +58,36 @@ CREATE TABLE IF NOT EXISTS molds (
 
 -- ── 초기 데이터 ──
 
-INSERT INTO machines VALUES
+INSERT IGNORE INTO machines VALUES
     ('INJ-01', 320, 28, 8200),
     ('INJ-02', 250, 35, 6400),
     ('INJ-03', 180, 42, 5100),
     ('INJ-05', 440, 25, 7800);
 
 -- 시나리오 A: CAPA 여유
-INSERT INTO schedules (scenario_type, machine_id, current_load, available_days) VALUES
+INSERT IGNORE INTO schedules (scenario_type, machine_id, current_load, available_days) VALUES
     ('A', 'INJ-01', 0.45, 10),
     ('A', 'INJ-02', 0.30, 10);
 
 -- 시나리오 B: CAPA 부족
-INSERT INTO schedules (scenario_type, machine_id, current_load, available_days) VALUES
+INSERT IGNORE INTO schedules (scenario_type, machine_id, current_load, available_days) VALUES
     ('B', 'INJ-01', 0.90, 10),
     ('B', 'INJ-02', 0.85, 10),
     ('B', 'INJ-03', 0.70, 10),
     ('B', 'INJ-05', 0.20, 10);
 
 -- 시나리오 C: 경합
-INSERT INTO schedules (scenario_type, machine_id, current_load, available_days) VALUES
+INSERT IGNORE INTO schedules (scenario_type, machine_id, current_load, available_days) VALUES
     ('C', 'INJ-01', 0.50, 10),
     ('C', 'INJ-02', 0.50, 10);
 
-INSERT INTO competing_orders (scenario_type, order_id, quantity, deadline, priority) VALUES
-    ('C', 'ORD-C-0921', 30000, '2024-02-12', 1),
-    ('C', 'ORD-C-0930', 40000, '2024-02-15', 2);
+INSERT IGNORE INTO competing_orders (scenario_type, order_id, quantity, deadline, priority) VALUES
+    ('C', 'ORD-C-0921', 30000, DATE_ADD(CURDATE(), INTERVAL 14 DAY), 1),
+    ('C', 'ORD-C-0930', 40000, DATE_ADD(CURDATE(), INTERVAL 17 DAY), 2);
 
 -- 시나리오 A: 금형 정상, 현재 사출기에 장착 중
-INSERT INTO molds VALUES ('MDL-320-A', 'P-320-BLK', 'A', 'INJ-01', 200000, 500000, 2.0, 'ok');
+INSERT IGNORE INTO molds VALUES ('MDL-320-A', 'P-320-BLK', 'A', 'INJ-01', 200000, 500000, 2.0, 'ok');
 -- 시나리오 B: 금형 수명 임박 + 다른 기계에 장착 → 셋업 지연
-INSERT INTO molds VALUES ('MDL-440-B', 'P-440-WHT', 'B', 'INJ-03', 480000, 500000, 4.0, 'maintenance_needed');
+INSERT IGNORE INTO molds VALUES ('MDL-440-B', 'P-440-WHT', 'B', 'INJ-03', 480000, 500000, 4.0, 'maintenance_needed');
 -- 시나리오 C: 금형 다른 기계에 장착 중 → 이동 셋업 필요
-INSERT INTO molds VALUES ('MDL-320-C', 'P-320-BLK', 'C', 'INJ-02', 350000, 500000, 2.0, 'ok');
+INSERT IGNORE INTO molds VALUES ('MDL-320-C', 'P-320-BLK', 'C', 'INJ-02', 350000, 500000, 2.0, 'ok');

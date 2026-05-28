@@ -46,9 +46,10 @@ def save_trajectory(trajectory: dict, traj_id: int = None) -> int:
             else:
                 cur.execute("""
                     UPDATE trajectories
-                    SET action = %s, state = %s, result = %s, recovery = %s, completed_at = %s
+                    SET plan = %s, action = %s, state = %s, result = %s, recovery = %s, completed_at = %s
                     WHERE id = %s
                 """, (
+                    json.dumps(trajectory.get("plan"), ensure_ascii=False),
                     json.dumps(trajectory.get("action", []), ensure_ascii=False),
                     json.dumps(trajectory.get("state"), ensure_ascii=False),
                     json.dumps(trajectory.get("result"), ensure_ascii=False),

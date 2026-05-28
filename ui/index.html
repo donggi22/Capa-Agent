@@ -82,6 +82,24 @@
   .result-ok { background: #e8f5e9; border-left: 4px solid #43a047; }
   .result-ng { background: #fdecea; border-left: 4px solid #e53935; }
   .result-unknown { background: #fff8e1; border-left: 4px solid #ffa000; }
+  .capa-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 10px; margin-bottom: 16px;
+  }
+  .capa-card {
+    border: 1px solid #d0d7de; border-radius: 8px; padding: 12px 14px;
+    background: #fafafa;
+  }
+  .capa-card .machine-id { font-size: 12px; color: #888; margin-bottom: 4px; }
+  .capa-card .machine-val { font-size: 18px; font-weight: bold; color: #1f4e79; }
+  .capa-card .machine-unit { font-size: 11px; color: #aaa; margin-left: 2px; }
+  .capa-totals {
+    display: flex; gap: 24px; padding: 12px 16px;
+    background: #f0f4f8; border-radius: 8px; margin-bottom: 16px;
+    font-size: 13px; flex-wrap: wrap;
+  }
+  .capa-totals span { color: #555; }
+  .capa-totals strong { color: #1f4e79; }
   .field-colors { "goal":"#e3f2fd","plan":"#f3e5f5","action":"#fff3e0","state":"#e8f5e9","result":"#fce4ec","recovery":"#fafafa" }
 </style>
 </head>
@@ -245,6 +263,38 @@ function renderResult(traj) {
   else if (result.feasible === false) cls = 'result-ng';
   summaryEl.className = 'result-summary ' + cls;
   summaryEl.textContent = result.summary || '판단 결과 없음';
+
+  // 기계별 가용 CAPA
+  const capaBefore = document.getElementById('capa-section');
+  if (capaBefore) capaBefore.remove();
+
+  const capaSection = document.createElement('div');
+  capaSection.id = 'capa-section';
+
+  if (result.machine_capa && Object.keys(result.machine_capa).length > 0) {
+    const grid = Object.entries(result.machine_capa).map(([id, cap]) => `
+      <div class="capa-card">
+        <div class="machine-id">${id}</div>
+        <div class="machine-val">${cap.toLocaleString()}<span class="machine-unit">EA</span></div>
+      </div>
+    `).join('');
+
+    const competing = result.total_competing ?? 0;
+    const gap = (result.total_avail ?? 0) - (traj.goal?.quantity ?? 0) - competing;
+    const gapColor = gap >= 0 ? '#2e7d32' : '#c62828';
+
+    capaSection.innerHTML = `
+      <div class="capa-grid">${grid}</div>
+      <div class="capa-totals">
+        <span>총 가용 CAPA: <strong>${(result.total_avail ?? 0).toLocaleString()} EA</strong></span>
+        <span>요청 수량: <strong>${(traj.goal?.quantity ?? 0).toLocaleString()} EA</strong></span>
+        ${competing > 0 ? `<span>경합 수주: <strong>${competing.toLocaleString()} EA</strong></span>` : ''}
+        <span>CAPA 갭: <strong style="color:${gapColor}">${gap >= 0 ? '+' : ''}${gap.toLocaleString()} EA</strong></span>
+      </div>
+    `;
+  }
+
+  summaryEl.insertAdjacentElement('afterend', capaSection);
 
   // Trajectory 6개 필드
   trajSection.innerHTML = '';

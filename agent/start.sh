@@ -11,4 +11,4 @@ done
 echo "[START] LLM 서버 준비 완료"
 
 echo "[START] Agent 서버 시작..."
-uvicorn main:app --host 0.0.0.0 --port 8000
+uvicorn main:app --host 0.0.0.0 --port 8000 --reload

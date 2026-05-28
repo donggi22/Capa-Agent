@@ -104,10 +104,9 @@ def get_schedule(order_id: str):
     try:
         with conn.cursor() as cur:
             cur.execute("""
-                SELECT available_days, updated_at
+                SELECT MIN(available_days) AS available_days, MAX(updated_at) AS updated_at
                 FROM schedules
                 WHERE scenario_type = %s
-                LIMIT 1
             """, (scenario,))
             row = cur.fetchone()
             return {

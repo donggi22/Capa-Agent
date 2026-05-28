@@ -25,6 +25,7 @@ class ChatRequest(BaseModel):
     tools: list = []
     tool_choice: Union[str, dict] = "auto"
     max_tokens: int = 1000
+    response_format: Union[dict, None] = None
 
 @app.get("/health")
 def health():
@@ -48,10 +49,15 @@ def chat(req: ChatRequest):
             "{\"tool_call\": {\"name\": \"함수명\", \"arguments\": {...}}}"
         )
 
+    json_mode = (
+        isinstance(req.response_format, dict)
+        and req.response_format.get("type") == "json_object"
+    )
     resp = llm.create_chat_completion(
         messages=messages,
         max_tokens=req.max_tokens,
         temperature=0.0,
+        response_format={"type": "json_object"} if json_mode else None,
     )
 
     text = (resp["choices"][0]["message"].get("content") or "").strip()

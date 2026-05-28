@@ -60,6 +60,7 @@ services:
       DB_USER: root
       DB_PASSWORD: capa1234
       DB_NAME: capa_db
+      TZ: Asia/Seoul
     networks:
       - capa-network
     depends_on:
@@ -78,6 +79,7 @@ services:
       - ./agent/main.py:/app/main.py
       - ./agent/db.py:/app/db.py
       - ./agent/llm_server.py:/app/llm_server.py
+      - ./agent/start.sh:/app/start.sh
     environment:
       DB_HOST: mariadb
       DB_PORT: 3306
