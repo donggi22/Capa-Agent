@@ -1,0 +1,82 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: model-gguf-pv
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes: [ReadOnlyMany]
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ""
+  hostPath:
+    path: /model-gguf
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: model-gguf-pvc
+  namespace: capa
+spec:
+  accessModes: [ReadOnlyMany]
+  storageClassName: ""
+  resources:
+    requests:
+      storage: 5Gi
+  volumeName: model-gguf-pv
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent
+  namespace: capa
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agent
+  template:
+    metadata:
+      labels:
+        app: agent
+    spec:
+      imagePullSecrets:
+      - name: ghcr-secret
+      containers:
+      - name: agent
+        image: ghcr.io/GHCR_USER/capa-agent:latest
+        envFrom:
+        - configMapRef:
+            name: capa-config
+        - secretRef:
+            name: capa-secret
+        ports:
+        - containerPort: 8000
+        volumeMounts:
+        - name: model-gguf
+          mountPath: /model-gguf
+          readOnly: true
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          failureThreshold: 10
+      volumes:
+      - name: model-gguf
+        persistentVolumeClaim:
+          claimName: model-gguf-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agent
+  namespace: capa
+spec:
+  selector:
+    app: agent
+  ports:
+  - port: 8000
+    targetPort: 8000
+    nodePort: 30000
+  type: NodePort

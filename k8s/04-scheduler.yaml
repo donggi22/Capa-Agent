@@ -1,0 +1,25 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: scheduler
+  namespace: capa
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: scheduler
+  template:
+    metadata:
+      labels:
+        app: scheduler
+    spec:
+      imagePullSecrets:
+      - name: ghcr-secret
+      containers:
+      - name: scheduler
+        image: ghcr.io/GHCR_USER/capa-scheduler:latest
+        envFrom:
+        - configMapRef:
+            name: capa-config
+        - secretRef:
+            name: capa-secret

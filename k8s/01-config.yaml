@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: capa-config
+  namespace: capa
+data:
+  DB_HOST: mariadb
+  DB_PORT: "3306"
+  DB_USER: root
+  DB_NAME: capa_db
+  MES_API_URL: http://mes-api:8001
+  LLM_BASE_URL: http://localhost:8080/v1
+  LLM_MODEL: exaone
+  OMP_NUM_THREADS: "8"
+  GGUF_MODEL_PATH: /model-gguf/model.gguf
+  TZ: Asia/Seoul
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: capa-secret
+  namespace: capa
+type: Opaque
+stringData:
+  DB_PASSWORD: capa1234

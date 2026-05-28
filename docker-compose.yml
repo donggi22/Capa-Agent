@@ -1,0 +1,112 @@
+version: "3.9"
+
+networks:
+  capa-network:
+    driver: bridge
+
+volumes:
+  mariadb-data:
+
+services:
+
+  mariadb:
+    image: mariadb:11
+    container_name: capa-mariadb
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: capa1234
+      MYSQL_DATABASE: capa_db
+      TZ: Asia/Seoul
+    volumes:
+      - mariadb-data:/var/lib/mysql
+      - ./mariadb/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "3307:3306"
+    networks:
+      - capa-network
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mes-api:
+    build: ./mes-api
+    container_name: capa-mes-api
+    restart: unless-stopped
+    volumes:
+      - ./mes-api/main.py:/app/main.py
+    environment:
+      DB_HOST: mariadb
+      DB_PORT: 3306
+      DB_USER: root
+      DB_PASSWORD: capa1234
+      DB_NAME: capa_db
+    ports:
+      - "8001:8001"
+    networks:
+      - capa-network
+    depends_on:
+      mariadb:
+        condition: service_healthy
+
+  scheduler:
+    build: ./scheduler
+    container_name: capa-scheduler
+    restart: unless-stopped
+    environment:
+      DB_HOST: mariadb
+      DB_PORT: 3306
+      DB_USER: root
+      DB_PASSWORD: capa1234
+      DB_NAME: capa_db
+    networks:
+      - capa-network
+    depends_on:
+      mariadb:
+        condition: service_healthy
+
+  agent:
+    build: ./agent
+    container_name: capa-agent
+    restart: unless-stopped
+    volumes:
+      - ./model-gguf:/model-gguf
+      - ./agent/agent.py:/app/agent.py
+      - ./agent/tools.py:/app/tools.py
+      - ./agent/schema.py:/app/schema.py
+      - ./agent/main.py:/app/main.py
+      - ./agent/db.py:/app/db.py
+      - ./agent/llm_server.py:/app/llm_server.py
+    environment:
+      DB_HOST: mariadb
+      DB_PORT: 3306
+      DB_USER: root
+      DB_PASSWORD: capa1234
+      DB_NAME: capa_db
+      MES_API_URL: http://mes-api:8001
+      LLM_BASE_URL: http://localhost:8080/v1
+      LLM_MODEL: exaone
+      OMP_NUM_THREADS: "8"
+      GGUF_MODEL_PATH: /model-gguf/model.gguf
+      TZ: Asia/Seoul
+    ports:
+      - "8000:8000"
+    networks:
+      - capa-network
+    depends_on:
+      mariadb:
+        condition: service_healthy
+      mes-api:
+        condition: service_started
+
+  ui:
+    build: ./ui
+    container_name: capa-ui
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    networks:
+      - capa-network
+    depends_on:
+      - agent

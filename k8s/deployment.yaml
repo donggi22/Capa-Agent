@@ -1,0 +1,177 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mariadb
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mariadb
+  template:
+    metadata:
+      labels:
+        app: mariadb
+    spec:
+      containers:
+      - name: mariadb
+        image: mariadb:11
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          value: "capa1234"
+        - name: MYSQL_DATABASE
+          value: "capa_db"
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+        - name: init-sql
+          mountPath: /docker-entrypoint-initdb.d
+      volumes:
+      - name: init-sql
+        configMap:
+          name: mariadb-init
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mariadb
+spec:
+  selector:
+    app: mariadb
+  ports:
+  - port: 3306
+    targetPort: 3306
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mes-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mes-api
+  template:
+    metadata:
+      labels:
+        app: mes-api
+    spec:
+      containers:
+      - name: mes-api
+        image: capa-mes-api:latest
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: DB_HOST
+          value: mariadb
+        - name: DB_PASSWORD
+          value: "capa1234"
+        ports:
+        - containerPort: 8001
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mes-api
+spec:
+  selector:
+    app: mes-api
+  ports:
+  - port: 8001
+    targetPort: 8001
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: scheduler
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: scheduler
+  template:
+    metadata:
+      labels:
+        app: scheduler
+    spec:
+      containers:
+      - name: scheduler
+        image: capa-scheduler:latest
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: DB_HOST
+          value: mariadb
+        - name: DB_PASSWORD
+          value: "capa1234"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agent
+  template:
+    metadata:
+      labels:
+        app: agent
+    spec:
+      containers:
+      - name: agent
+        image: capa-agent:latest
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: DB_HOST
+          value: mariadb
+        - name: DB_PASSWORD
+          value: "capa1234"
+        - name: MES_API_URL
+          value: http://mes-api:8001
+        - name: LLM_BASE_URL
+          value: http://localhost:8080/v1
+        ports:
+        - containerPort: 8000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agent
+spec:
+  selector:
+    app: agent
+  ports:
+  - port: 8000
+    targetPort: 8000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ui
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ui
+  template:
+    metadata:
+      labels:
+        app: ui
+    spec:
+      containers:
+      - name: ui
+        image: capa-ui:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ui
+spec:
+  selector:
+    app: ui
+  type: LoadBalancer
+  ports:
+  - port: 80
+    targetPort: 80

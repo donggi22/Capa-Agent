@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>생산 CAPA Agent</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Malgun Gothic', sans-serif; background: #f0f2f5; color: #222; }
+  header {
+    background: #1f4e79; color: white; padding: 18px 32px;
+    display: flex; align-items: center; gap: 12px;
+  }
+  header h1 { font-size: 20px; }
+  header span { font-size: 13px; opacity: 0.75; }
+  .container { max-width: 1100px; margin: 32px auto; padding: 0 20px; }
+  .card { background: white; border-radius: 10px; padding: 28px; box-shadow: 0 2px 8px rgba(0,0,0,0.07); margin-bottom: 24px; }
+  .card h2 { font-size: 16px; color: #1f4e79; margin-bottom: 20px; border-bottom: 2px solid #deeaf1; padding-bottom: 10px; }
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+  label { font-size: 13px; color: #555; display: block; margin-bottom: 6px; }
+  input, select {
+    width: 100%; padding: 10px 12px; border: 1px solid #d0d7de;
+    border-radius: 6px; font-size: 14px; outline: none;
+    transition: border 0.2s;
+  }
+  input:focus, select:focus { border-color: #2e75b6; }
+  .scenario-btns { display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap; }
+  .btn {
+    padding: 10px 22px; border: none; border-radius: 6px;
+    font-size: 14px; cursor: pointer; font-weight: bold; transition: 0.2s;
+  }
+  .btn-primary { background: #1f4e79; color: white; }
+  .btn-primary:hover { background: #2e75b6; }
+  .btn-a { background: #e8f5e9; color: #2e7d32; border: 1px solid #a5d6a7; }
+  .btn-b { background: #fdecea; color: #c62828; border: 1px solid #ef9a9a; }
+  .btn-c { background: #ede7f6; color: #4527a0; border: 1px solid #ce93d8; }
+  .btn-err { background: #f5f5f5; color: #555; border: 1px solid #bbb; }
+  .btn:hover { opacity: 0.85; }
+  .status-bar {
+    padding: 12px 16px; border-radius: 6px; font-size: 14px;
+    display: none; margin-top: 16px;
+  }
+  .status-loading { background: #e3f2fd; color: #1565c0; display: flex; align-items: center; gap: 8px; }
+  .status-ok { background: #e8f5e9; color: #2e7d32; }
+  .status-err { background: #fdecea; color: #c62828; }
+  .spinner {
+    width: 16px; height: 16px; border: 2px solid #90caf9;
+    border-top-color: #1565c0; border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Trajectory 결과 */
+  .traj-section { margin-top: 8px; }
+  .traj-field {
+    border: 1px solid #e0e0e0; border-radius: 8px;
+    margin-bottom: 12px; overflow: hidden;
+  }
+  .traj-header {
+    padding: 10px 16px; font-size: 13px; font-weight: bold;
+    cursor: pointer; display: flex; justify-content: space-between;
+    align-items: center; user-select: none;
+  }
+  .traj-header:hover { opacity: 0.9; }
+  .traj-body { padding: 14px; background: #fafafa; display: none; }
+  .traj-body.open { display: block; }
+  pre {
+    font-size: 12px; white-space: pre-wrap; word-break: break-all;
+    font-family: 'Consolas', monospace; line-height: 1.6;
+  }
+  .badge {
+    display: inline-block; padding: 2px 8px; border-radius: 12px;
+    font-size: 11px; font-weight: bold; margin-left: 8px;
+  }
+  .badge-A { background: #e8f5e9; color: #2e7d32; }
+  .badge-B { background: #fdecea; color: #c62828; }
+  .badge-C { background: #ede7f6; color: #4527a0; }
+  .badge-ERROR { background: #f5f5f5; color: #555; }
+  .result-summary {
+    padding: 16px; border-radius: 8px; margin-bottom: 16px; font-size: 15px;
+  }
+  .result-ok { background: #e8f5e9; border-left: 4px solid #43a047; }
+  .result-ng { background: #fdecea; border-left: 4px solid #e53935; }
+  .result-unknown { background: #fff8e1; border-left: 4px solid #ffa000; }
+  .field-colors { "goal":"#e3f2fd","plan":"#f3e5f5","action":"#fff3e0","state":"#e8f5e9","result":"#fce4ec","recovery":"#fafafa" }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>생산 CAPA Agent</h1>
+    <span>사출성형 납기 대응 서비스 — 단위 에이전트 검증</span>
+  </div>
+</header>
+
+<div class="container">
+
+  <!-- 입력 폼 -->
+  <div class="card">
+    <h2>수주 정보 입력</h2>
+    <div class="form-grid">
+      <div>
+        <label>수주번호</label>
+        <input id="order_id" type="text" value="ORD-A-0001" placeholder="ORD-A-0001">
+      </div>
+      <div>
+        <label>제품코드</label>
+        <input id="product_code" type="text" value="P-320-BLK">
+      </div>
+      <div>
+        <label>수량 (EA)</label>
+        <input id="quantity" type="number" value="15000">
+      </div>
+      <div>
+        <label>납기일</label>
+        <input id="deadline" type="date" value="2026-06-01">
+      </div>
+      <div>
+        <label>우선순위</label>
+        <select id="priority">
+          <option value="1">1 (최우선)</option>
+          <option value="2">2</option>
+          <option value="3">3</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="scenario-btns">
+      <button class="btn btn-primary" onclick="runAgent()">▶ 에이전트 실행</button>
+      <button class="btn btn-a" onclick="fillScenario('A')">시나리오 A (표준)</button>
+      <button class="btn btn-b" onclick="fillScenario('B')">시나리오 B (CAPA 부족)</button>
+      <button class="btn btn-c" onclick="fillScenario('C')">시나리오 C (경합)</button>
+      <button class="btn btn-err" onclick="fillScenario('E')">ERROR 시나리오</button>
+    </div>
+
+    <div id="status" class="status-bar"></div>
+  </div>
+
+  <!-- 결과 -->
+  <div id="result-area" style="display:none;">
+    <div class="card">
+      <h2>판단 결과 <span id="scenario-badge" class="badge"></span></h2>
+      <div id="result-summary" class="result-summary"></div>
+    </div>
+
+    <div class="card">
+      <h2>Trajectory 상세</h2>
+      <div class="traj-section" id="traj-section"></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const AGENT_URL = window.location.origin.replace(':80', '').replace(/:\d+$/, '') + ':8000';
+
+const SCENARIOS = {
+  A: { order_id: 'ORD-A-0001', product_code: 'P-320-BLK', quantity: 15000, deadline: '2026-06-01', priority: 1 },
+  B: { order_id: 'ORD-B-0001', product_code: 'P-440-WHT', quantity: 95000, deadline: '2026-06-01', priority: 1 },
+  C: { order_id: 'ORD-C-0001', product_code: 'P-320-BLK', quantity: 40000, deadline: '2026-06-01', priority: 2 },
+  E: { order_id: 'ORD-X-9999', product_code: 'P-999-ERR', quantity: 20000, deadline: '2026-06-01', priority: 1 },
+};
+
+const FIELD_COLORS = {
+  goal:     { bg: '#e3f2fd', border: '#90caf9', label: '① GOAL — 목표' },
+  plan:     { bg: '#f3e5f5', border: '#ce93d8', label: '② PLAN — 계획' },
+  action:   { bg: '#fff3e0', border: '#ffcc80', label: '③ ACTION — Tool 호출 내역' },
+  state:    { bg: '#e8f5e9', border: '#a5d6a7', label: '④ STATE — 판단 상태' },
+  result:   { bg: '#fce4ec', border: '#f48fb1', label: '⑤ RESULT — 최종 결과' },
+  recovery: { bg: '#f5f5f5', border: '#bdbdbd', label: '⑥ RECOVERY — 복구 기록' },
+};
+
+function fillScenario(type) {
+  const s = SCENARIOS[type];
+  document.getElementById('order_id').value = s.order_id;
+  document.getElementById('product_code').value = s.product_code;
+  document.getElementById('quantity').value = s.quantity;
+  document.getElementById('deadline').value = s.deadline;
+  document.getElementById('priority').value = s.priority;
+}
+
+function setStatus(type, msg) {
+  const el = document.getElementById('status');
+  el.className = 'status-bar status-' + type;
+  el.style.display = 'flex';
+  if (type === 'loading') {
+    el.innerHTML = `<div class="spinner"></div> ${msg}`;
+  } else {
+    el.textContent = msg;
+  }
+}
+
+async function runAgent() {
+  const body = {
+    order_id:     document.getElementById('order_id').value.trim(),
+    product_code: document.getElementById('product_code').value.trim(),
+    quantity:     parseInt(document.getElementById('quantity').value),
+    deadline:     document.getElementById('deadline').value,
+    priority:     parseInt(document.getElementById('priority').value),
+  };
+
+  setStatus('loading', '에이전트 실행 중... (모델 추론 중)');
+  document.getElementById('result-area').style.display = 'none';
+
+  try {
+    const resp = await fetch(`${AGENT_URL}/agent/capa`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+
+    if (!resp.ok) {
+      const err = await resp.json();
+      setStatus('err', '오류: ' + (err.detail || resp.statusText));
+      return;
+    }
+
+    const data = await resp.json();
+    setStatus('ok', '✅ 에이전트 실행 완료');
+    renderResult(data.trajectory);
+
+  } catch (e) {
+    setStatus('err', '연결 실패: ' + e.message);
+  }
+}
+
+function renderResult(traj) {
+  const area = document.getElementById('result-area');
+  const summaryEl = document.getElementById('result-summary');
+  const badge = document.getElementById('scenario-badge');
+  const trajSection = document.getElementById('traj-section');
+
+  area.style.display = 'block';
+
+  // 시나리오 배지
+  const st = traj.goal?.scenario_type || 'ERROR';
+  badge.textContent = '시나리오 ' + st;
+  badge.className = 'badge badge-' + st;
+
+  // result 요약
+  const result = traj.result || {};
+  let cls = 'result-unknown';
+  if (result.feasible === true) cls = 'result-ok';
+  else if (result.feasible === false) cls = 'result-ng';
+  summaryEl.className = 'result-summary ' + cls;
+  summaryEl.textContent = result.summary || '판단 결과 없음';
+
+  // Trajectory 6개 필드
+  trajSection.innerHTML = '';
+  ['goal','plan','action','state','result','recovery'].forEach(field => {
+    const val = traj[field];
+    const color = FIELD_COLORS[field];
+    const isEmpty = val === null || val === undefined;
+    const div = document.createElement('div');
+    div.className = 'traj-field';
+    div.style.borderColor = color.border;
+    div.innerHTML = `
+      <div class="traj-header" style="background:${color.bg};" onclick="toggleField(this)">
+        <span>${color.label}</span>
+        <span style="font-size:11px;color:#888">${isEmpty ? '(null)' : '▼ 펼치기'}</span>
+      </div>
+      <div class="traj-body">
+        <pre>${JSON.stringify(val, null, 2)}</pre>
+      </div>
+    `;
+    trajSection.appendChild(div);
+  });
+
+  // goal/result는 기본 펼침
+  const headers = trajSection.querySelectorAll('.traj-header');
+  [0, 4].forEach(i => {
+    if (headers[i]) {
+      headers[i].nextElementSibling.classList.add('open');
+      headers[i].querySelector('span:last-child').textContent = '▲ 접기';
+    }
+  });
+}
+
+function toggleField(header) {
+  const body = header.nextElementSibling;
+  const isOpen = body.classList.toggle('open');
+  header.querySelector('span:last-child').textContent = isOpen ? '▲ 접기' : '▼ 펼치기';
+}
+</script>
+</body>
+</html>
