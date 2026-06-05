@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: llm
+  namespace: capa-agent
+  labels:
+    app: llm
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: llm
+  template:
+    metadata:
+      labels:
+        app: llm
+    spec:
+      containers:
+        - name: vllm
+          image: vllm/vllm-openai:latest
+          args:
+            - "--model=/models/EXAONE-3.5-7.8B-Instruct-AWQ"
+            - "--quantization=awq"
+            - "--dtype=float16"
+            - "--max-model-len=4096"
+            - "--port=8080"
+            - "--trust-remote-code"
+          ports:
+            - containerPort: 8080
+          resources:
+            requests:
+              memory: "8Gi"
+              cpu: "2"
+              nvidia.com/gpu: "1"
+            limits:
+              memory: "12Gi"
+              cpu: "4"
+              nvidia.com/gpu: "1"
+          volumeMounts:
+            - name: model-storage
+              mountPath: /models
+              readOnly: true
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 120
+            periodSeconds: 30
+            timeoutSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 60
+            periodSeconds: 15
+            timeoutSeconds: 10
+      volumes:
+        - name: model-storage
+          hostPath:
+            # Adjust to match the model path on your K8s node
+            path: /run/desktop/mnt/host/c/Users/Design/Desktop/trajectory_test
+            type: Directory

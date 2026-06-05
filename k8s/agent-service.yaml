@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: capa-agent-svc
+  namespace: capa-agent
+spec:
+  selector:
+    app: capa-agent
+  ports:
+    - port: 8000
+      targetPort: 8000
+      protocol: TCP
+  type: ClusterIP

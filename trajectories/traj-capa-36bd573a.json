@@ -1,0 +1,891 @@
+{
+  "trajectory_id": "traj-capa-36bd573a",
+  "agent_id": "production_capa_agent",
+  "order_id": "ORD-6a4be662",
+  "created_at": "2026-06-05T09:26:17.600Z",
+  "completed_at": "2026-06-05T09:26:37.525Z",
+  "duration_ms": 19925,
+  "goal": {
+    "description": "요청 수량을 납기 내에 생산할 수 있는지 사출기별 가용 능력 판단",
+    "input_from_orchestrator": {
+      "product_code": "PROD-C01",
+      "required_quantity": 130000,
+      "deadline": "2026-06-25"
+    },
+    "success_criteria": "사출기별 가용 CAPA 요약 + 생산 가능 여부 판정 + 추천 설비 반환"
+  },
+  "plan": {
+    "strategy": "sequential_with_parallel",
+    "steps_expected": [
+      "MES 생산계획 및 사출기별 가동 일정 조회",
+      "금형 위치·사용횟수·교체시간 조회",
+      "사출기별 가용 CAPA 계산",
+      "최적 설비 조합 탐색",
+      "다중 설비 조합 추천 이유 생성",
+      "결과 정규화 및 오케스트레이터 반환"
+    ]
+  },
+  "actions": {
+    "strategy": "sequential_with_parallel",
+    "parallel_groups": [
+      "MCH-01",
+      "MCH-02",
+      "MCH-03"
+    ],
+    "steps": [
+      {
+        "step_id": "step-001",
+        "step_name": "MES 생산계획 및 사출기별 가동 일정 조회",
+        "type": "tool_call",
+        "tool": "get_mes_production_schedule",
+        "langgraph_node": "mes_schedule_node",
+        "api_endpoint": "http://mes-api:8001/schedule"
+      },
+      {
+        "step_id": "step-002",
+        "step_name": "금형 위치·사용횟수·교체시간 조회",
+        "type": "tool_call",
+        "tool": "get_mold_status",
+        "langgraph_node": "mold_status_node",
+        "api_endpoint": "http://mes-api:8001/mold"
+      },
+      {
+        "step_id": "step-003",
+        "step_name": "사출기별 가용 CAPA 계산",
+        "type": "tool_call",
+        "tool": "calculate_machine_capa",
+        "langgraph_node": "calculate_capa_node",
+        "langgraph_send": true,
+        "api_endpoint": "http://mes-api:8001/capa",
+        "parallel_instances": [
+          "MCH-01",
+          "MCH-02",
+          "MCH-03"
+        ]
+      },
+      {
+        "step_id": "step-004a",
+        "step_name": "최적 설비 조합 탐색",
+        "type": "python_computation",
+        "langgraph_node": "reasoning_node",
+        "algorithm": "greedy_descending_capacity"
+      },
+      {
+        "step_id": "step-004b",
+        "step_name": "다중 설비 조합 추천 이유 생성",
+        "type": "llm_reasoning",
+        "langgraph_node": "reasoning_node",
+        "model": "EXAONE-3.5-7.8B-Instruct-AWQ"
+      },
+      {
+        "step_id": "step-005",
+        "step_name": "결과 정규화 및 오케스트레이터 반환",
+        "type": "transform",
+        "langgraph_node": "result_node"
+      }
+    ]
+  },
+  "state": {
+    "langgraph_node": "production_capa_agent",
+    "langgraph_state": "completed",
+    "retry_count": 0,
+    "human_in_loop": false,
+    "next_node": "orchestrator",
+    "step_001": {
+      "step_name": "MES 생산계획 및 사출기별 가동 일정 조회",
+      "type": "tool_call",
+      "tool": "get_mes_production_schedule",
+      "langgraph_node": "mes_schedule_node",
+      "started_at": "2026-06-05T09:26:17.600Z",
+      "completed_at": "2026-06-05T09:26:17.607Z",
+      "duration_ms": 6,
+      "http_method": "GET",
+      "api_endpoint": "http://mes-api:8001/schedule",
+      "status_code": 200,
+      "input": {
+        "product_code": "PROD-C01",
+        "deadline": "2026-06-25"
+      },
+      "output": [
+        {
+          "machine_id": "MCH-01",
+          "daily_working_hours": 8,
+          "uph": 150,
+          "current_product_code": "PROD-B01",
+          "scheduled_periods": [
+            {
+              "from": "2026-06-01",
+              "to": "2026-06-04"
+            }
+          ]
+        },
+        {
+          "machine_id": "MCH-02",
+          "daily_working_hours": 16,
+          "uph": 180,
+          "current_product_code": "PROD-A01",
+          "scheduled_periods": [
+            {
+              "from": "2026-06-01",
+              "to": "2026-06-02"
+            }
+          ]
+        },
+        {
+          "machine_id": "MCH-03",
+          "daily_working_hours": 24,
+          "uph": 200,
+          "current_product_code": "PROD-C01",
+          "scheduled_periods": [
+            {
+              "from": "2026-06-01",
+              "to": "2026-06-08"
+            },
+            {
+              "from": "2026-06-09",
+              "to": "2026-06-11"
+            }
+          ]
+        }
+      ],
+      "error": null
+    },
+    "step_002": {
+      "step_name": "금형 위치·사용횟수·교체시간 조회",
+      "type": "tool_call",
+      "tool": "get_mold_status",
+      "langgraph_node": "mold_status_node",
+      "started_at": "2026-06-05T09:26:17.607Z",
+      "completed_at": "2026-06-05T09:26:17.613Z",
+      "duration_ms": 5,
+      "http_method": "GET",
+      "api_endpoint": "http://mes-api:8001/mold",
+      "status_code": 200,
+      "input": {
+        "product_code": "PROD-C01"
+      },
+      "output": {
+        "mold_id": "MOLD-03",
+        "usage_count": 8500,
+        "max_usage_count": 12000,
+        "cavity_count": 2,
+        "yield_rate": 0.91,
+        "change_time_by_machine": [
+          {
+            "machine_id": "MCH-01",
+            "current_mold": "MOLD-02",
+            "time_min": 55
+          },
+          {
+            "machine_id": "MCH-02",
+            "current_mold": "MOLD-01",
+            "time_min": 50
+          },
+          {
+            "machine_id": "MCH-03",
+            "current_mold": "MOLD-03",
+            "time_min": 0
+          }
+        ]
+      },
+      "error": null
+    },
+    "step_003": {
+      "type": "tool_call",
+      "tool": "calculate_machine_capa",
+      "langgraph_send": true,
+      "wall_clock_ms": 15,
+      "instances": {
+        "MCH-01": {
+          "step_name": "사출기별 가용 CAPA 계산 - MCH-01",
+          "type": "tool_call",
+          "tool": "calculate_machine_capa",
+          "langgraph_node": "calculate_capa_node",
+          "langgraph_send": true,
+          "started_at": "2026-06-05T09:26:17.614Z",
+          "completed_at": "2026-06-05T09:26:17.629Z",
+          "duration_ms": 14,
+          "http_method": "POST",
+          "api_endpoint": "http://mes-api:8001/capa",
+          "status_code": 200,
+          "input": {
+            "machine_id": "MCH-01",
+            "daily_working_hours": 8,
+            "uph": 150,
+            "current_mold": "MOLD-02",
+            "target_mold_id": "MOLD-03",
+            "change_time_min": 55,
+            "usage_count": 8500,
+            "max_usage_count": 12000,
+            "cavity_count": 2,
+            "yield_rate": 0.91,
+            "deadline": "2026-06-25",
+            "today": "2026-06-05",
+            "required_quantity": 130000
+          },
+          "output": {
+            "machine_id": "MCH-01",
+            "actual_available_days": 20,
+            "days_needed": 120,
+            "daily_capacity": 1200,
+            "first_day_capacity": 1062,
+            "available_capacity": 23862,
+            "adjusted_quantity": 142858,
+            "sufficient": false,
+            "mold_replacement_required": true,
+            "replacement_reason": "type_change",
+            "change_time_min": 55,
+            "calculation_trace": {
+              "yield_rate": 0.91,
+              "adjusted_quantity": 142858,
+              "shots_needed": 71429,
+              "projected_usage": 79929,
+              "usage_exhausted": true,
+              "mold_type_change": true,
+              "change_time_hours": 0.917,
+              "first_day_hours": 7.083,
+              "gross_daily_capacity": 1200,
+              "available_days": 20
+            }
+          },
+          "error": null
+        },
+        "MCH-02": {
+          "step_name": "사출기별 가용 CAPA 계산 - MCH-02",
+          "type": "tool_call",
+          "tool": "calculate_machine_capa",
+          "langgraph_node": "calculate_capa_node",
+          "langgraph_send": true,
+          "started_at": "2026-06-05T09:26:17.619Z",
+          "completed_at": "2026-06-05T09:26:17.629Z",
+          "duration_ms": 9,
+          "http_method": "POST",
+          "api_endpoint": "http://mes-api:8001/capa",
+          "status_code": 200,
+          "input": {
+            "machine_id": "MCH-02",
+            "daily_working_hours": 16,
+            "uph": 180,
+            "current_mold": "MOLD-01",
+            "target_mold_id": "MOLD-03",
+            "change_time_min": 50,
+            "usage_count": 8500,
+            "max_usage_count": 12000,
+            "cavity_count": 2,
+            "yield_rate": 0.91,
+            "deadline": "2026-06-25",
+            "today": "2026-06-05",
+            "required_quantity": 130000
+          },
+          "output": {
+            "machine_id": "MCH-02",
+            "actual_available_days": 20,
+            "days_needed": 50,
+            "daily_capacity": 2880,
+            "first_day_capacity": 2730,
+            "available_capacity": 57450,
+            "adjusted_quantity": 142858,
+            "sufficient": false,
+            "mold_replacement_required": true,
+            "replacement_reason": "type_change",
+            "change_time_min": 50,
+            "calculation_trace": {
+              "yield_rate": 0.91,
+              "adjusted_quantity": 142858,
+              "shots_needed": 71429,
+              "projected_usage": 79929,
+              "usage_exhausted": true,
+              "mold_type_change": true,
+              "change_time_hours": 0.833,
+              "first_day_hours": 15.167,
+              "gross_daily_capacity": 2880,
+              "available_days": 20
+            }
+          },
+          "error": null
+        },
+        "MCH-03": {
+          "step_name": "사출기별 가용 CAPA 계산 - MCH-03",
+          "type": "tool_call",
+          "tool": "calculate_machine_capa",
+          "langgraph_node": "calculate_capa_node",
+          "langgraph_send": true,
+          "started_at": "2026-06-05T09:26:17.623Z",
+          "completed_at": "2026-06-05T09:26:17.629Z",
+          "duration_ms": 6,
+          "http_method": "POST",
+          "api_endpoint": "http://mes-api:8001/capa",
+          "status_code": 200,
+          "input": {
+            "machine_id": "MCH-03",
+            "daily_working_hours": 24,
+            "uph": 200,
+            "current_mold": "MOLD-03",
+            "target_mold_id": "MOLD-03",
+            "change_time_min": 0,
+            "usage_count": 8500,
+            "max_usage_count": 12000,
+            "cavity_count": 2,
+            "yield_rate": 0.91,
+            "deadline": "2026-06-25",
+            "today": "2026-06-05",
+            "required_quantity": 130000
+          },
+          "output": {
+            "machine_id": "MCH-03",
+            "actual_available_days": 14,
+            "days_needed": 30,
+            "daily_capacity": 4800,
+            "first_day_capacity": 4800,
+            "available_capacity": 67200,
+            "adjusted_quantity": 142858,
+            "sufficient": false,
+            "mold_replacement_required": true,
+            "replacement_reason": "wear_limit",
+            "change_time_min": 0,
+            "calculation_trace": {
+              "yield_rate": 0.91,
+              "adjusted_quantity": 142858,
+              "shots_needed": 71429,
+              "projected_usage": 79929,
+              "usage_exhausted": true,
+              "mold_type_change": false,
+              "change_time_hours": 0,
+              "first_day_hours": 24,
+              "gross_daily_capacity": 4800,
+              "available_days": 14
+            }
+          },
+          "error": null
+        }
+      }
+    },
+    "step_004a": {
+      "step_name": "최적 설비 조합 탐색",
+      "type": "python_computation",
+      "langgraph_node": "reasoning_node",
+      "algorithm": "greedy_descending_capacity",
+      "started_at": "2026-06-05T09:26:17.630Z",
+      "completed_at": "2026-06-05T09:26:17.630Z",
+      "duration_ms": 0,
+      "input": {
+        "adjusted_quantity": 142858,
+        "candidate_count": 3
+      },
+      "output": {
+        "feasible": true,
+        "selected_machines": [
+          "MCH-03",
+          "MCH-02",
+          "MCH-01"
+        ],
+        "cumulative_capacity": 148512,
+        "allocation": [
+          {
+            "machine_id": "MCH-03",
+            "actual_available_days": 14,
+            "days_needed": 30,
+            "daily_capacity": 4800,
+            "first_day_capacity": 4800,
+            "available_capacity": 67200,
+            "adjusted_quantity": 142858,
+            "sufficient": false,
+            "mold_replacement_required": true,
+            "replacement_reason": "wear_limit",
+            "change_time_min": 0,
+            "calculation_trace": {
+              "yield_rate": 0.91,
+              "adjusted_quantity": 142858,
+              "shots_needed": 71429,
+              "projected_usage": 79929,
+              "usage_exhausted": true,
+              "mold_type_change": false,
+              "change_time_hours": 0,
+              "first_day_hours": 24,
+              "gross_daily_capacity": 4800,
+              "available_days": 14
+            },
+            "allocated_quantity": 64642
+          },
+          {
+            "machine_id": "MCH-02",
+            "actual_available_days": 20,
+            "days_needed": 50,
+            "daily_capacity": 2880,
+            "first_day_capacity": 2730,
+            "available_capacity": 57450,
+            "adjusted_quantity": 142858,
+            "sufficient": false,
+            "mold_replacement_required": true,
+            "replacement_reason": "type_change",
+            "change_time_min": 50,
+            "calculation_trace": {
+              "yield_rate": 0.91,
+              "adjusted_quantity": 142858,
+              "shots_needed": 71429,
+              "projected_usage": 79929,
+              "usage_exhausted": true,
+              "mold_type_change": true,
+              "change_time_hours": 0.833,
+              "first_day_hours": 15.167,
+              "gross_daily_capacity": 2880,
+              "available_days": 20
+            },
+            "allocated_quantity": 55263
+          },
+          {
+            "machine_id": "MCH-01",
+            "actual_available_days": 20,
+            "days_needed": 120,
+            "daily_capacity": 1200,
+            "first_day_capacity": 1062,
+            "available_capacity": 23862,
+            "adjusted_quantity": 142858,
+            "sufficient": false,
+            "mold_replacement_required": true,
+            "replacement_reason": "type_change",
+            "change_time_min": 55,
+            "calculation_trace": {
+              "yield_rate": 0.91,
+              "adjusted_quantity": 142858,
+              "shots_needed": 71429,
+              "projected_usage": 79929,
+              "usage_exhausted": true,
+              "mold_type_change": true,
+              "change_time_hours": 0.917,
+              "first_day_hours": 7.083,
+              "gross_daily_capacity": 1200,
+              "available_days": 20
+            },
+            "allocated_quantity": 22953
+          }
+        ],
+        "judgment_basis": {
+          "all_sufficient": false,
+          "combination_found": true,
+          "combination_capacity": 148512,
+          "adjusted_quantity": 142858,
+          "judgment": true,
+          "reason": "모든 단일 설비 sufficient=False → greedy 조합 탐색 → 합산 CAPA(148,512) >= adjusted_quantity(142,858) → judgment=True"
+        }
+      },
+      "error": null
+    },
+    "step_004b": {
+      "step_name": "다중 설비 조합 운영 리스크 분석",
+      "type": "llm_reasoning",
+      "langgraph_node": "reasoning_node",
+      "started_at": "2026-06-05T09:26:17.630Z",
+      "completed_at": "2026-06-05T09:26:37.524Z",
+      "duration_ms": 19894,
+      "model": "EXAONE-3.5-7.8B-Instruct-AWQ",
+      "temperature": 0.1,
+      "input": {
+        "machine_ids": [
+          "MCH-03",
+          "MCH-02",
+          "MCH-01"
+        ],
+        "adjusted_quantity": 142858
+      },
+      "output": {
+        "llm_narrative": "다중 설비 조합을 통한 분산 생산은 조율 복잡성을 증가시킬 수 있습니다. 각 설비('MCH-03', 'MCH-02', 'MCH-01')는 금형 교체가 필요하며, 특히 'MCH-02'와 'MCH-01'은 타입 변경으로 인한 추가 시간 소요가 예상되어 생산 일정에 영향을 줄 수 있습니다. 생산 과정에서 예상치 못한 기계 고장이나 원자재 공급 지연 등 변수가 발생할 경우, 계획된 생산량 달성에 어려움이 따를 수 있습니다."
+      },
+      "tokens": {
+        "prompt_tokens": 1317,
+        "completion_tokens": 171,
+        "total_tokens": 1488
+      },
+      "error": null
+    },
+    "step_005": {
+      "step_name": "결과 정규화 및 오케스트레이터 반환",
+      "type": "transform",
+      "langgraph_node": "result_node",
+      "started_at": "2026-06-05T09:26:37.525Z",
+      "completed_at": "2026-06-05T09:26:37.525Z",
+      "duration_ms": 0,
+      "input": {
+        "mode": "multi_machine",
+        "recommended_machine": null,
+        "recommended_machines": [
+          "MCH-03",
+          "MCH-02",
+          "MCH-01"
+        ],
+        "selection_reason": "단일 설비로는 필요 수량 142,858개를 납기 내 충족할 수 없어 3개 설비 조합 생산으로 전환했습니다. MCH-03, MCH-02, MCH-01의 합산 납기 내 최대 CAPA 148,512개가 필요 수량을 충족합니다. 설비별 배분은 MCH-03 64,642개, MCH-02 55,263개, MCH-01 22,953개으로 계획됩니다.",
+        "judgment_basis": {
+          "all_sufficient": false,
+          "combination_found": true,
+          "combination_capacity": 148512,
+          "adjusted_quantity": 142858,
+          "judgment": true,
+          "reason": "모든 단일 설비 sufficient=False → greedy 조합 탐색 → 합산 CAPA(148,512) >= adjusted_quantity(142,858) → judgment=True"
+        },
+        "candidate_rank": [
+          {
+            "rank": 1,
+            "machine_id": "MCH-03",
+            "available_capacity": 67200,
+            "sufficient": false,
+            "days_needed": 30,
+            "change_time_min": 0,
+            "replacement_reason": "wear_limit",
+            "score": 100
+          },
+          {
+            "rank": 2,
+            "machine_id": "MCH-02",
+            "available_capacity": 57450,
+            "sufficient": false,
+            "days_needed": 50,
+            "change_time_min": 50,
+            "replacement_reason": "type_change",
+            "score": 85
+          },
+          {
+            "rank": 3,
+            "machine_id": "MCH-01",
+            "available_capacity": 23862,
+            "sufficient": false,
+            "days_needed": 120,
+            "change_time_min": 55,
+            "replacement_reason": "type_change",
+            "score": 36
+          }
+        ],
+        "llm_narrative_training_use": false
+      },
+      "output": {
+        "judgment": true,
+        "mode": "multi_machine",
+        "recommended_machine": null,
+        "multi_machine_plan": {
+          "machines": [
+            {
+              "machine_id": "MCH-03",
+              "actual_available_days": 14,
+              "days_needed": 30,
+              "daily_capacity": 4800,
+              "first_day_capacity": 4800,
+              "available_capacity": 67200,
+              "adjusted_quantity": 142858,
+              "sufficient": false,
+              "mold_replacement_required": true,
+              "replacement_reason": "wear_limit",
+              "change_time_min": 0,
+              "calculation_trace": {
+                "yield_rate": 0.91,
+                "adjusted_quantity": 142858,
+                "shots_needed": 71429,
+                "projected_usage": 79929,
+                "usage_exhausted": true,
+                "mold_type_change": false,
+                "change_time_hours": 0,
+                "first_day_hours": 24,
+                "gross_daily_capacity": 4800,
+                "available_days": 14
+              },
+              "allocated_quantity": 64642
+            },
+            {
+              "machine_id": "MCH-02",
+              "actual_available_days": 20,
+              "days_needed": 50,
+              "daily_capacity": 2880,
+              "first_day_capacity": 2730,
+              "available_capacity": 57450,
+              "adjusted_quantity": 142858,
+              "sufficient": false,
+              "mold_replacement_required": true,
+              "replacement_reason": "type_change",
+              "change_time_min": 50,
+              "calculation_trace": {
+                "yield_rate": 0.91,
+                "adjusted_quantity": 142858,
+                "shots_needed": 71429,
+                "projected_usage": 79929,
+                "usage_exhausted": true,
+                "mold_type_change": true,
+                "change_time_hours": 0.833,
+                "first_day_hours": 15.167,
+                "gross_daily_capacity": 2880,
+                "available_days": 20
+              },
+              "allocated_quantity": 55263
+            },
+            {
+              "machine_id": "MCH-01",
+              "actual_available_days": 20,
+              "days_needed": 120,
+              "daily_capacity": 1200,
+              "first_day_capacity": 1062,
+              "available_capacity": 23862,
+              "adjusted_quantity": 142858,
+              "sufficient": false,
+              "mold_replacement_required": true,
+              "replacement_reason": "type_change",
+              "change_time_min": 55,
+              "calculation_trace": {
+                "yield_rate": 0.91,
+                "adjusted_quantity": 142858,
+                "shots_needed": 71429,
+                "projected_usage": 79929,
+                "usage_exhausted": true,
+                "mold_type_change": true,
+                "change_time_hours": 0.917,
+                "first_day_hours": 7.083,
+                "gross_daily_capacity": 1200,
+                "available_days": 20
+              },
+              "allocated_quantity": 22953
+            }
+          ],
+          "recommended_machines": [
+            "MCH-03",
+            "MCH-02",
+            "MCH-01"
+          ],
+          "total_capacity": 148512,
+          "total_allocated": 142858,
+          "judgment_basis": {
+            "all_sufficient": false,
+            "combination_found": true,
+            "combination_capacity": 148512,
+            "adjusted_quantity": 142858,
+            "judgment": true,
+            "reason": "모든 단일 설비 sufficient=False → greedy 조합 탐색 → 합산 CAPA(148,512) >= adjusted_quantity(142,858) → judgment=True"
+          }
+        },
+        "alternative_scenarios": [
+          {
+            "type": "best_single_machine",
+            "feasible": false,
+            "machine_id": "MCH-03",
+            "available_capacity": 67200,
+            "shortfall": 75658,
+            "note": "MCH-03 단독 생산 시 67,200개 가능. 필요 수량 대비 75,658개 부족 — 수량 축소 또는 납기 연장 필요."
+          },
+          {
+            "type": "reduced_combination",
+            "feasible": false,
+            "machines": [
+              {
+                "machine_id": "MCH-03"
+              },
+              {
+                "machine_id": "MCH-02"
+              }
+            ],
+            "total_capacity": 124650,
+            "shortfall": 18208,
+            "note": "MCH-01 제외 시 합산 CAPA 124,650개로 18,208개 부족 — MCH-01 필수."
+          }
+        ],
+        "capa_summary": [
+          {
+            "machine_id": "MCH-01",
+            "actual_available_days": 20,
+            "days_needed": 120,
+            "daily_capacity": 1200,
+            "available_capacity": 23862,
+            "sufficient": false,
+            "mold_replacement_required": true,
+            "replacement_reason": "type_change",
+            "change_time_min": 55
+          },
+          {
+            "machine_id": "MCH-02",
+            "actual_available_days": 20,
+            "days_needed": 50,
+            "daily_capacity": 2880,
+            "available_capacity": 57450,
+            "sufficient": false,
+            "mold_replacement_required": true,
+            "replacement_reason": "type_change",
+            "change_time_min": 50
+          },
+          {
+            "machine_id": "MCH-03",
+            "actual_available_days": 14,
+            "days_needed": 30,
+            "daily_capacity": 4800,
+            "available_capacity": 67200,
+            "sufficient": false,
+            "mold_replacement_required": true,
+            "replacement_reason": "wear_limit",
+            "change_time_min": 0
+          }
+        ]
+      },
+      "error": null
+    }
+  },
+  "result": {
+    "judgment": true,
+    "recommended_machine": null,
+    "multi_machine_plan": {
+      "machines": [
+        {
+          "machine_id": "MCH-03",
+          "actual_available_days": 14,
+          "days_needed": 30,
+          "daily_capacity": 4800,
+          "first_day_capacity": 4800,
+          "available_capacity": 67200,
+          "adjusted_quantity": 142858,
+          "sufficient": false,
+          "mold_replacement_required": true,
+          "replacement_reason": "wear_limit",
+          "change_time_min": 0,
+          "calculation_trace": {
+            "yield_rate": 0.91,
+            "adjusted_quantity": 142858,
+            "shots_needed": 71429,
+            "projected_usage": 79929,
+            "usage_exhausted": true,
+            "mold_type_change": false,
+            "change_time_hours": 0,
+            "first_day_hours": 24,
+            "gross_daily_capacity": 4800,
+            "available_days": 14
+          },
+          "allocated_quantity": 64642
+        },
+        {
+          "machine_id": "MCH-02",
+          "actual_available_days": 20,
+          "days_needed": 50,
+          "daily_capacity": 2880,
+          "first_day_capacity": 2730,
+          "available_capacity": 57450,
+          "adjusted_quantity": 142858,
+          "sufficient": false,
+          "mold_replacement_required": true,
+          "replacement_reason": "type_change",
+          "change_time_min": 50,
+          "calculation_trace": {
+            "yield_rate": 0.91,
+            "adjusted_quantity": 142858,
+            "shots_needed": 71429,
+            "projected_usage": 79929,
+            "usage_exhausted": true,
+            "mold_type_change": true,
+            "change_time_hours": 0.833,
+            "first_day_hours": 15.167,
+            "gross_daily_capacity": 2880,
+            "available_days": 20
+          },
+          "allocated_quantity": 55263
+        },
+        {
+          "machine_id": "MCH-01",
+          "actual_available_days": 20,
+          "days_needed": 120,
+          "daily_capacity": 1200,
+          "first_day_capacity": 1062,
+          "available_capacity": 23862,
+          "adjusted_quantity": 142858,
+          "sufficient": false,
+          "mold_replacement_required": true,
+          "replacement_reason": "type_change",
+          "change_time_min": 55,
+          "calculation_trace": {
+            "yield_rate": 0.91,
+            "adjusted_quantity": 142858,
+            "shots_needed": 71429,
+            "projected_usage": 79929,
+            "usage_exhausted": true,
+            "mold_type_change": true,
+            "change_time_hours": 0.917,
+            "first_day_hours": 7.083,
+            "gross_daily_capacity": 1200,
+            "available_days": 20
+          },
+          "allocated_quantity": 22953
+        }
+      ],
+      "recommended_machines": [
+        "MCH-03",
+        "MCH-02",
+        "MCH-01"
+      ],
+      "total_capacity": 148512,
+      "total_allocated": 142858,
+      "judgment_basis": {
+        "all_sufficient": false,
+        "combination_found": true,
+        "combination_capacity": 148512,
+        "adjusted_quantity": 142858,
+        "judgment": true,
+        "reason": "모든 단일 설비 sufficient=False → greedy 조합 탐색 → 합산 CAPA(148,512) >= adjusted_quantity(142,858) → judgment=True"
+      }
+    },
+    "selection_reason": "단일 설비로는 필요 수량 142,858개를 납기 내 충족할 수 없어 3개 설비 조합 생산으로 전환했습니다. MCH-03, MCH-02, MCH-01의 합산 납기 내 최대 CAPA 148,512개가 필요 수량을 충족합니다. 설비별 배분은 MCH-03 64,642개, MCH-02 55,263개, MCH-01 22,953개으로 계획됩니다.",
+    "capa_summary": [
+      {
+        "machine_id": "MCH-01",
+        "actual_available_days": 20,
+        "days_needed": 120,
+        "daily_capacity": 1200,
+        "available_capacity": 23862,
+        "sufficient": false,
+        "mold_replacement_required": true,
+        "replacement_reason": "type_change",
+        "change_time_min": 55
+      },
+      {
+        "machine_id": "MCH-02",
+        "actual_available_days": 20,
+        "days_needed": 50,
+        "daily_capacity": 2880,
+        "available_capacity": 57450,
+        "sufficient": false,
+        "mold_replacement_required": true,
+        "replacement_reason": "type_change",
+        "change_time_min": 50
+      },
+      {
+        "machine_id": "MCH-03",
+        "actual_available_days": 14,
+        "days_needed": 30,
+        "daily_capacity": 4800,
+        "available_capacity": 67200,
+        "sufficient": false,
+        "mold_replacement_required": true,
+        "replacement_reason": "wear_limit",
+        "change_time_min": 0
+      }
+    ],
+    "alternative_scenarios": [
+      {
+        "type": "best_single_machine",
+        "feasible": false,
+        "machine_id": "MCH-03",
+        "available_capacity": 67200,
+        "shortfall": 75658,
+        "note": "MCH-03 단독 생산 시 67,200개 가능. 필요 수량 대비 75,658개 부족 — 수량 축소 또는 납기 연장 필요."
+      },
+      {
+        "type": "reduced_combination",
+        "feasible": false,
+        "machines": [
+          {
+            "machine_id": "MCH-03"
+          },
+          {
+            "machine_id": "MCH-02"
+          }
+        ],
+        "total_capacity": 124650,
+        "shortfall": 18208,
+        "note": "MCH-01 제외 시 합산 CAPA 124,650개로 18,208개 부족 — MCH-01 필수."
+      }
+    ]
+  },
+  "recovery": {
+    "triggered": false,
+    "strategy": null,
+    "fallback_used": null
+  }
+}

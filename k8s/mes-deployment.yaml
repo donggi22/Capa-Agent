@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mes-api
+  namespace: capa-agent
+  labels:
+    app: mes-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mes-api
+  template:
+    metadata:
+      labels:
+        app: mes-api
+    spec:
+      containers:
+        - name: mes-api
+          image: mes-api:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8001
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "200m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8001
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8001
+            initialDelaySeconds: 5
+            periodSeconds: 10

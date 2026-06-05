@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CAPA Agent</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #f0f2f5;
+      color: #1a1a2e;
+      min-height: 100vh;
+      padding: 32px 16px;
+    }
+    h1 { font-size: 1.5rem; font-weight: 700; margin-bottom: 24px; color: #1a1a2e; }
+    h1 span { font-size: 0.85rem; font-weight: 400; color: #888; margin-left: 8px; }
+    .container { max-width: 920px; margin: 0 auto; }
+
+    /* ── Tabs ── */
+    .tabs {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 20px;
+      border-bottom: 2px solid #e4e6ea;
+      padding-bottom: 0;
+    }
+    .tab-btn {
+      padding: 10px 22px;
+      border: none;
+      background: none;
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: #888;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -2px;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .tab-btn.active { color: #4f6ef7; border-bottom-color: #4f6ef7; }
+    .tab-btn:hover:not(.active) { color: #555; }
+    .tab-pane { display: none; }
+    .tab-pane.active { display: block; }
+
+    /* ── Cards ── */
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      padding: 24px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+      margin-bottom: 20px;
+    }
+    .card-title {
+      font-size: 0.8rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #888;
+      margin-bottom: 16px;
+    }
+
+    /* ── Form ── */
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+    label { display: block; font-size: 0.82rem; font-weight: 500; color: #555; margin-bottom: 6px; }
+    input, select {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1.5px solid #e0e0e0;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      color: #1a1a2e;
+      outline: none;
+      transition: border-color 0.15s;
+      background: #fff;
+    }
+    input:focus, select:focus { border-color: #4f6ef7; }
+
+    /* ── Buttons ── */
+    .btn {
+      margin-top: 20px;
+      padding: 11px 28px;
+      background: #4f6ef7;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.92rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s, opacity 0.15s;
+    }
+    .btn:hover { background: #3a57e8; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-green {
+      padding: 9px 22px;
+      background: #1a7a45;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.88rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s, opacity 0.15s;
+    }
+    .btn-green:hover { background: #155f36; }
+    .btn-green:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-green.done { background: #888; cursor: default; }
+    .btn-sm {
+      padding: 8px 18px;
+      background: #4f6ef7;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .btn-sm:hover { background: #3a57e8; }
+
+    /* ── Result header ── */
+    .result-header { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; }
+    .judgment-badge {
+      font-size: 1rem; font-weight: 700;
+      padding: 6px 18px; border-radius: 999px;
+    }
+    .judgment-badge.ok   { background: #d4f5e3; color: #1a7a45; }
+    .judgment-badge.fail { background: #fde8e8; color: #c0392b; }
+    .result-meta { display: flex; flex-direction: column; gap: 2px; }
+    .result-meta .machine { font-size: 1.1rem; font-weight: 700; color: #4f6ef7; }
+    .result-meta .reason  { font-size: 0.83rem; color: #777; max-width: 480px; }
+    .traj-id { margin-left: auto; font-size: 0.75rem; color: #bbb; font-family: monospace; }
+
+    /* ── Tables ── */
+    table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+    th {
+      text-align: left; padding: 8px 12px;
+      background: #f7f8fa;
+      font-weight: 600; color: #666;
+      font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em;
+      border-bottom: 1px solid #eee;
+    }
+    td { padding: 11px 12px; border-bottom: 1px solid #f0f0f0; vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+    .machine-id { font-weight: 700; font-size: 0.95rem; }
+    .machine-id.recommended { color: #4f6ef7; }
+    .star {
+      font-size: 0.7rem; background: #4f6ef7; color: #fff;
+      padding: 1px 6px; border-radius: 4px; margin-left: 6px; vertical-align: middle;
+    }
+
+    /* ── Chips ── */
+    .chip {
+      display: inline-block; padding: 2px 10px;
+      border-radius: 999px; font-size: 0.78rem; font-weight: 600;
+    }
+    .chip.ok   { background: #d4f5e3; color: #1a7a45; }
+    .chip.fail { background: #fde8e8; color: #c0392b; }
+    .chip.warn { background: #fff3d4; color: #9a6700; }
+    .chip.gray { background: #f0f0f0; color: #666; }
+    .chip.blue { background: #e8ecff; color: #4f6ef7; }
+
+    /* ── Spinner ── */
+    .spinner {
+      display: inline-block; width: 16px; height: 16px;
+      border: 2px solid #ddd; border-top-color: #4f6ef7;
+      border-radius: 50%; animation: spin 0.7s linear infinite;
+      vertical-align: middle; margin-right: 6px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Misc ── */
+    .error-box { background: #fde8e8; border-radius: 8px; padding: 14px 18px; color: #c0392b; font-size: 0.88rem; }
+    .hidden { display: none; }
+    .num { font-variant-numeric: tabular-nums; }
+    .filter-row { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
+    .filter-row .btn { margin-top: 0; padding: 10px 20px; }
+    .empty-state { text-align: center; padding: 40px; color: #aaa; font-size: 0.9rem; }
+
+    details.traj-details summary {
+      font-size: 0.82rem; font-weight: 600; color: #aaa;
+      cursor: pointer; user-select: none;
+      text-transform: uppercase; letter-spacing: 0.05em;
+    }
+    details.traj-details summary:hover { color: #666; }
+    pre.traj-json {
+      margin-top: 10px; background: #f7f8fa; border-radius: 8px;
+      padding: 14px; font-size: 0.76rem; line-height: 1.5;
+      overflow-x: auto; white-space: pre-wrap; word-break: break-all; color: #333;
+      max-height: 400px; overflow-y: auto;
+    }
+
+    /* multi-machine plan */
+    .multi-plan-grid {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 10px; margin-top: 8px;
+    }
+    .multi-plan-item {
+      background: #f0f4ff; border-radius: 8px; padding: 10px 14px;
+    }
+    .multi-plan-item .mpi-id { font-weight: 700; color: #4f6ef7; }
+    .multi-plan-item .mpi-info { font-size: 0.8rem; color: #666; margin-top: 3px; }
+
+    /* schedule period badge */
+    .period-badge {
+      display: inline-block;
+      background: #fff3cd; color: #856404;
+      font-size: 0.78rem; font-weight: 600;
+      padding: 2px 10px; border-radius: 6px;
+      margin: 2px 4px 2px 0;
+    }
+    .period-badge.active { background: #d4f5e3; color: #1a7a45; }
+    .period-badge.past   { background: #f0f0f0; color: #999; }
+
+    tr.product-last td, td.product-divider { border-bottom: 2px solid #bbb; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>CAPA Agent <span>생산 가용능력 분석</span></h1>
+
+    <div class="tabs">
+      <button class="tab-btn active" onclick="switchTab('analysis')">CAPA 분석</button>
+      <button class="tab-btn" onclick="switchTab('schedule')">생산 계획</button>
+    </div>
+
+    <!-- ══════════════════════════════════════════
+         TAB: CAPA 분석
+    ══════════════════════════════════════════ -->
+    <div class="tab-pane active" id="tab-analysis">
+
+      <div class="card">
+        <div class="card-title">요청 입력</div>
+        <div class="form-grid">
+          <div>
+            <label>제품 코드</label>
+            <select id="product_code">
+              <option value="PROD-A01">PROD-A01 — 삼각형</option>
+              <option value="PROD-B01">PROD-B01 — 정사각형</option>
+              <option value="PROD-C01">PROD-C01 — 직사각형</option>
+            </select>
+          </div>
+          <div>
+            <label>요청 수량</label>
+            <input id="required_quantity" type="number" value="10000" min="1" />
+          </div>
+          <div>
+            <label>납기일</label>
+            <input id="deadline" type="date" />
+          </div>
+        </div>
+        <button class="btn" id="submit-btn" onclick="runCapa()">분석 실행</button>
+      </div>
+
+      <div class="card error-box hidden" id="error-box"></div>
+
+      <!-- Result -->
+      <div class="card hidden" id="result-card">
+        <div class="card-title">분석 결과</div>
+        <div class="result-header" id="result-header"></div>
+        <div id="multi-plan-section" class="hidden">
+          <div style="font-size:0.82rem;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;">다중 설비 배분 계획</div>
+          <div class="multi-plan-grid" id="multi-plan-grid"></div>
+        </div>
+        <div style="margin-top:16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+          <button class="btn-green" id="add-schedule-btn" onclick="addToSchedule()">생산 계획에 추가</button>
+          <span id="add-result-msg" style="font-size:0.85rem;color:#1a7a45;font-weight:600;display:none;"></span>
+        </div>
+        <details class="traj-details" style="margin-top:14px;">
+          <summary>Raw Trajectory</summary>
+          <pre class="traj-json" id="traj-json"></pre>
+        </details>
+      </div>
+
+      <!-- CAPA Table -->
+      <div class="card hidden" id="table-card">
+        <div class="card-title">사출기별 CAPA</div>
+        <table>
+          <thead>
+            <tr>
+              <th>설비</th>
+              <th>필요일수</th>
+              <th>일별 CAPA</th>
+              <th>납기 내 최대 CAPA</th>
+              <th>생산가능</th>
+              <th>금형교체</th>
+              <th>교체시간</th>
+            </tr>
+          </thead>
+          <tbody id="capa-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════
+         TAB: 생산 계획
+    ══════════════════════════════════════════ -->
+    <div class="tab-pane hidden" id="tab-schedule">
+
+      <div class="card">
+        <div class="card-title">생산 계획 조회</div>
+        <div class="filter-row">
+          <div>
+            <label>제품 코드</label>
+            <select id="schedule-filter">
+              <option value="">전체</option>
+              <option value="PROD-A01">PROD-A01 — 삼각형</option>
+              <option value="PROD-B01">PROD-B01 — 정사각형</option>
+              <option value="PROD-C01">PROD-C01 — 직사각형</option>
+            </select>
+          </div>
+          <button class="btn" onclick="loadSchedule()">조회</button>
+        </div>
+      </div>
+
+      <div class="card" id="schedule-card">
+        <div class="card-title">스케줄</div>
+        <div id="schedule-body">
+          <div class="empty-state">제품을 선택하거나 전체를 조회하세요.</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    let _lastResult = null;
+    let _lastRequest = null;
+
+    // Default deadline: 2 weeks from today
+    (() => {
+      const d = new Date();
+      d.setDate(d.getDate() + 14);
+      document.getElementById('deadline').value = d.toISOString().slice(0, 10);
+    })();
+
+    // ── Tab switching ──────────────────────────────────────────────
+    function switchTab(name) {
+      document.querySelectorAll('.tab-pane').forEach(el => el.classList.remove('active'));
+      document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+      document.getElementById('tab-' + name).classList.add('active');
+      document.querySelector(`.tab-btn[onclick="switchTab('${name}')"]`).classList.add('active');
+      if (name === 'schedule') loadSchedule();
+    }
+
+    // ── CAPA Analysis ─────────────────────────────────────────────
+    async function runCapa() {
+      const btn = document.getElementById('submit-btn');
+      const errorBox = document.getElementById('error-box');
+      const resultCard = document.getElementById('result-card');
+      const tableCard = document.getElementById('table-card');
+      const addBtn = document.getElementById('add-schedule-btn');
+
+      const product_code = document.getElementById('product_code').value;
+      const required_quantity = parseInt(document.getElementById('required_quantity').value);
+      const deadline = document.getElementById('deadline').value;
+      _lastRequest = { product_code, required_quantity, deadline };
+
+      if (!product_code || !required_quantity || !deadline) {
+        showError('모든 필드를 입력해주세요.'); return;
+      }
+
+      errorBox.classList.add('hidden');
+      resultCard.classList.add('hidden');
+      tableCard.classList.add('hidden');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span>분석 중...';
+
+      try {
+        const res = await fetch('/api/v1/capa', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ product_code, required_quantity, deadline }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ detail: res.statusText }));
+          throw new Error(err.detail || `HTTP ${res.status}`);
+        }
+        const data = await res.json();
+        _lastResult = data;
+        renderResult(data, required_quantity);
+      } catch (e) {
+        showError(e.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '분석 실행';
+      }
+    }
+
+    function renderResult(data, required_quantity) {
+      const ok = data.judgment;
+
+      // Result header
+      let machineText = '-';
+      if (data.recommended_machine) {
+        machineText = data.recommended_machine + ' 추천';
+      } else if (data.multi_machine_plan) {
+        const machines = data.multi_machine_plan.recommended_machines || [];
+        machineText = machines.join(' + ') + ' 다중 추천';
+      } else if (!ok) {
+        machineText = '생산 불가';
+      }
+
+      document.getElementById('result-header').innerHTML = `
+        <div class="judgment-badge ${ok ? 'ok' : 'fail'}">${ok ? '생산 가능' : '생산 불가'}</div>
+        <div class="result-meta">
+          <div class="machine">${machineText}</div>
+          <div class="reason">${data.selection_reason || ''}</div>
+        </div>
+      `;
+
+      // Multi machine plan section
+      const multiSection = document.getElementById('multi-plan-section');
+      const multiGrid = document.getElementById('multi-plan-grid');
+      if (data.multi_machine_plan && data.multi_machine_plan.machines) {
+        multiGrid.innerHTML = data.multi_machine_plan.machines.map(m => `
+          <div class="multi-plan-item">
+            <div class="mpi-id">${m.machine_id}</div>
+            <div class="mpi-info">
+              배분: <b>${(m.allocated_quantity || 0).toLocaleString()}</b>개<br>
+              가용: ${(m.available_capacity || 0).toLocaleString()}<br>
+              필요일수: ${m.days_needed != null ? m.days_needed + '일' : '-'}
+            </div>
+          </div>
+        `).join('');
+        multiSection.classList.remove('hidden');
+      } else {
+        multiSection.classList.add('hidden');
+      }
+
+      // Reset add button
+      const addBtn = document.getElementById('add-schedule-btn');
+      const addMsg = document.getElementById('add-result-msg');
+      addBtn.textContent = '생산 계획에 추가';
+      addBtn.disabled = false;
+      addBtn.classList.remove('done');
+      addMsg.style.display = 'none';
+
+      // Trajectory JSON
+      document.getElementById('traj-json').textContent = JSON.stringify(data.full_state, null, 2);
+      document.getElementById('result-card').classList.remove('hidden');
+
+      // CAPA table
+      const tbody = document.getElementById('capa-tbody');
+      tbody.innerHTML = '';
+      const recMachines = data.recommended_machine
+        ? [data.recommended_machine]
+        : (data.multi_machine_plan?.recommended_machines || []);
+
+      for (const m of (data.capa_summary || [])) {
+        const isRec = recMachines.includes(m.machine_id);
+        tbody.innerHTML += `
+          <tr>
+            <td>
+              <span class="machine-id ${isRec ? 'recommended' : ''}">${m.machine_id}</span>
+              ${isRec ? '<span class="star">추천</span>' : ''}
+            </td>
+            <td class="num">${m.days_needed != null ? m.days_needed + '일' : '-'}</td>
+            <td class="num">${(m.daily_capacity ?? 0).toLocaleString()}</td>
+            <td class="num">
+              ${(m.available_capacity ?? 0).toLocaleString()}
+              <span style="font-size:0.75rem;color:#aaa"> / ${required_quantity.toLocaleString()}</span>
+            </td>
+            <td><span class="chip ${m.sufficient ? 'ok' : 'fail'}">${m.sufficient ? '가능' : '불가'}</span></td>
+            <td><span class="chip ${m.mold_replacement_required ? 'warn' : 'gray'}">${m.mold_replacement_required ? '필요' : '불필요'}</span></td>
+            <td class="num">${m.mold_replacement_required ? (m.change_time_min ?? '-') + '분' : '-'}</td>
+          </tr>
+        `;
+      }
+      document.getElementById('table-card').classList.remove('hidden');
+    }
+
+    // ── Add to Schedule ───────────────────────────────────────────
+    async function addToSchedule() {
+      if (!_lastResult || !_lastRequest) return;
+      const btn = document.getElementById('add-schedule-btn');
+      const msg = document.getElementById('add-result-msg');
+      btn.disabled = true;
+      btn.textContent = '추가 중...';
+      msg.style.display = 'none';
+
+      try {
+        const res = await fetch('/api/v1/schedule/add', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            trajectory_id: _lastResult.trajectory_id,
+            product_code: _lastRequest.product_code,
+            required_quantity: _lastRequest.required_quantity,
+            deadline: _lastRequest.deadline,
+            judgment: _lastResult.judgment,
+            recommended_machine: _lastResult.recommended_machine,
+            selection_reason: _lastResult.selection_reason,
+            full_state: _lastResult.full_state,
+            capa_summary: _lastResult.capa_summary,
+            multi_machine_plan: _lastResult.multi_machine_plan,
+          }),
+        });
+        if (!res.ok) throw new Error((await res.json()).detail || res.statusText);
+        const result = await res.json();
+        btn.textContent = '추가 완료 ✓';
+        btn.classList.add('done');
+        msg.textContent = `${result.scheduled.join(', ')} 생산 계획 등록 · trajectory 저장 완료`;
+        msg.style.display = 'inline';
+      } catch (e) {
+        btn.disabled = false;
+        btn.textContent = '생산 계획에 추가';
+        showError('추가 실패: ' + e.message);
+      }
+    }
+
+    // ── Schedule Tab ──────────────────────────────────────────────
+    async function loadSchedule() {
+      const filter = document.getElementById('schedule-filter').value;
+      const body = document.getElementById('schedule-body');
+      body.innerHTML = '<div class="empty-state"><span class="spinner"></span> 조회 중...</div>';
+
+      try {
+        const url = filter ? `/api/v1/schedule?product_code=${filter}` : '/api/v1/schedule';
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(res.statusText);
+        const rows = await res.json();
+        renderSchedule(rows);
+      } catch (e) {
+        body.innerHTML = `<div class="empty-state" style="color:#c0392b;">오류: ${e.message}</div>`;
+      }
+    }
+
+    function renderSchedule(rows) {
+      const body = document.getElementById('schedule-body');
+      const today = new Date().toISOString().slice(0, 10);
+
+      // Only rows with periods
+      const withPeriods = rows.filter(r => r.period_from);
+      if (!withPeriods.length) {
+        body.innerHTML = '<div class="empty-state">등록된 생산 계획이 없습니다.</div>';
+        return;
+      }
+
+      // Group by product_code → machines[]
+      const grouped = {};
+      for (const r of withPeriods) {
+        if (!grouped[r.product_code]) {
+          grouped[r.product_code] = { product_code: r.product_code, machines: {} };
+        }
+        if (!grouped[r.product_code].machines[r.machine_id]) {
+          grouped[r.product_code].machines[r.machine_id] = {
+            machine_id: r.machine_id,
+            uph: r.uph,
+            daily_working_hours: r.daily_working_hours,
+            periods: [],
+          };
+        }
+        grouped[r.product_code].machines[r.machine_id].periods.push({ from: r.period_from, to: r.period_to });
+      }
+
+      const html = `
+        <table>
+          <thead>
+            <tr>
+              <th>제품</th>
+              <th>설비</th>
+              <th>UPH</th>
+              <th>일가동</th>
+              <th>스케줄 기간</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${Object.values(grouped).map(g => {
+              const machines = Object.values(g.machines);
+              return machines.map((m, i) => {
+                const isLast = i === machines.length - 1;
+                const periodBadges = m.periods.map(p => {
+                  const cls = p.to < today ? 'past' : (p.from <= today && today <= p.to ? 'active' : '');
+                  return `<span class="period-badge ${cls}">${p.from} ~ ${p.to}</span>`;
+                }).join('');
+                return `
+                  <tr class="${isLast ? 'product-last' : ''}">
+                    ${i === 0 ? `<td rowspan="${machines.length}" class="product-divider"><span class="chip blue">${g.product_code}</span></td>` : ''}
+                    <td><span class="machine-id">${m.machine_id}</span></td>
+                    <td class="num">${m.uph.toLocaleString()}</td>
+                    <td class="num">${m.daily_working_hours}h</td>
+                    <td>${periodBadges}</td>
+                  </tr>
+                `;
+              }).join('');
+            }).join('')}
+          </tbody>
+        </table>
+      `;
+      body.innerHTML = html;
+    }
+
+    function showError(msg) {
+      const box = document.getElementById('error-box');
+      box.textContent = `오류: ${msg}`;
+      box.classList.remove('hidden');
+    }
+  </script>
+</body>
+</html>

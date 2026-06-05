@@ -1,0 +1,111 @@
+services:
+  # ── MariaDB ──
+  db:
+    image: mariadb:11
+    environment:
+      MYSQL_ROOT_PASSWORD: root_pass
+      MYSQL_DATABASE: mes_db
+      MYSQL_USER: mes_user
+      MYSQL_PASSWORD: mes_pass
+    ports:
+      - "3306:3306"
+    volumes:
+      - mariadb_data:/var/lib/mysql
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ── vLLM: EXAONE-3.5-7.8B-Instruct-AWQ served via OpenAI-compatible API ──
+  llm:
+    image: vllm/vllm-openai:v0.9.2
+    pull_policy: if_not_present
+    runtime: nvidia           # requires nvidia-container-toolkit
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+    volumes:
+      # Mount the local model directory into the container read-only
+      - ../EXAONE-3.5-7.8B-Instruct-AWQ:/models/EXAONE-3.5-7.8B-Instruct-AWQ:ro
+    command:
+      - --model=/models/EXAONE-3.5-7.8B-Instruct-AWQ
+      - --served-model-name=EXAONE-3.5-7.8B-Instruct-AWQ
+      - --quantization=awq
+      - --dtype=float16
+      - --max-model-len=4096
+      - --port=8080
+      - --trust-remote-code
+      - --gpu-memory-utilization=0.85
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # ── Mock MES API ──
+  mes-api:
+    build:
+      context: .
+      dockerfile: Dockerfile.mes
+    ports:
+      - "8001:8001"
+    environment:
+      - DB_HOST=db
+      - DB_PORT=3306
+      - DB_USER=mes_user
+      - DB_PASS=mes_pass
+      - DB_NAME=mes_db
+    volumes:
+      - ./mock_mes:/app/mock_mes
+    command: ["uvicorn", "mock_mes.main:app", "--host", "0.0.0.0", "--port", "8001", "--reload"]
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # ── LangGraph CAPA Agent ──
+  agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8002:8000"
+    environment:
+      - LLM_API_URL=http://llm:8080/v1
+      - LLM_MODEL=EXAONE-3.5-7.8B-Instruct-AWQ
+      - MES_API_URL=http://mes-api:8001
+      - DB_HOST=db
+      - DB_PORT=3306
+      - DB_USER=mes_user
+      - DB_PASS=mes_pass
+      - DB_NAME=mes_db
+    volumes:
+      - ./agent:/app/agent
+      - ./api:/app/api
+      - ./static:/app/static
+      - ./trajectories:/app/trajectories
+    command: ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    depends_on:
+      llm:
+        condition: service_healthy
+      mes-api:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  mariadb_data:

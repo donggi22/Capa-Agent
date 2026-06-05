@@ -1,0 +1,2 @@
+-- MCH-04~10 및 제품별 UPH는 init.sql의 machine_product_uph 테이블로 통합됨.
+-- 이 파일은 더 이상 사용하지 않음.
