@@ -52,6 +52,7 @@ class CapaAgentState(TypedDict):
     required_quantity: int
     deadline: str
     today: str
+    model_mode: str  # "original" | "lora"
 
     # Step results
     mes_schedule: Optional[List[MachineSchedule]]

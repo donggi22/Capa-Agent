@@ -168,6 +168,46 @@
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
+    /* ── Model selector ── */
+    .model-selector {
+      display: flex; gap: 8px; margin-bottom: 20px;
+    }
+    .model-btn {
+      flex: 1; padding: 12px 16px;
+      border: 2px solid #e0e0e0; border-radius: 10px;
+      background: #fff; cursor: pointer;
+      text-align: left; transition: border-color 0.15s, background 0.15s;
+    }
+    .model-btn:hover:not(.selected) { border-color: #c0c8f8; background: #f8f9ff; }
+    .model-btn.selected { border-color: #4f6ef7; background: #f0f3ff; }
+    .model-btn.selected.lora     { border-color: #7c3aed; background: #f5f0ff; }
+    .model-btn.selected.evaluate { border-color: #0891b2; background: #f0fbff; }
+    .model-btn .mb-title {
+      font-size: 0.9rem; font-weight: 700; color: #333; margin-bottom: 2px;
+    }
+    .model-btn.selected .mb-title          { color: #4f6ef7; }
+    .model-btn.selected.lora .mb-title     { color: #7c3aed; }
+    .model-btn.selected.evaluate .mb-title { color: #0891b2; }
+    .model-btn .mb-desc { font-size: 0.78rem; color: #888; }
+    .model-badge {
+      display: inline-block; font-size: 0.7rem; font-weight: 700;
+      padding: 1px 8px; border-radius: 4px; margin-left: 6px; vertical-align: middle;
+    }
+    .model-badge.original { background: #e8ecff; color: #4f6ef7; }
+    .model-badge.lora     { background: #ede9fe; color: #7c3aed; }
+    .model-badge.evaluate { background: #cffafe; color: #0891b2; }
+
+    /* ── Evaluate compare panel ── */
+    .eval-panel { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; }
+    .eval-col { border-radius: 8px; padding: 12px 14px; }
+    .eval-col.python { background: #f7f8fa; border: 1px solid #e4e6ea; }
+    .eval-col.llm    { background: #f0fbff; border: 1px solid #bae6fd; }
+    .eval-col-title  { font-size: 0.78rem; font-weight: 700; text-transform: uppercase;
+                       letter-spacing: 0.05em; margin-bottom: 8px; }
+    .eval-col.python .eval-col-title { color: #666; }
+    .eval-col.llm    .eval-col-title { color: #0891b2; }
+    .eval-meta { font-size: 0.78rem; color: #888; margin-bottom: 6px; }
+
     /* ── Misc ── */
     .error-box { background: #fde8e8; border-radius: 8px; padding: 14px 18px; color: #c0392b; font-size: 0.88rem; }
     .hidden { display: none; }
@@ -228,6 +268,22 @@
     ══════════════════════════════════════════ -->
     <div class="tab-pane active" id="tab-analysis">
 
+      <!-- 모델 선택 -->
+      <div class="model-selector">
+        <button class="model-btn selected" id="btn-original" onclick="selectModel('original')">
+          <div class="mb-title">베이스 모델 <span class="model-badge original" id="model-base-badge">-</span></div>
+          <div class="mb-desc" id="model-base-desc">로딩 중...</div>
+        </button>
+        <button class="model-btn lora" id="btn-lora" onclick="selectModel('lora')">
+          <div class="mb-title">LoRA 파인튜닝 <span class="model-badge lora" id="model-lora-badge">-</span></div>
+          <div class="mb-desc" id="model-lora-desc">로딩 중...</div>
+        </button>
+        <button class="model-btn evaluate" id="btn-evaluate" onclick="selectModel('evaluate')">
+          <div class="mb-title">SFT 검증 <span class="model-badge evaluate">Evaluate</span></div>
+          <div class="mb-desc">Python trajectory vs LoRA trajectory 비교</div>
+        </button>
+      </div>
+
       <div class="card">
         <div class="card-title">요청 입력</div>
         <div class="form-grid">
@@ -266,9 +322,32 @@
           <span id="add-result-msg" style="font-size:0.85rem;color:#1a7a45;font-weight:600;display:none;"></span>
         </div>
         <details class="traj-details" style="margin-top:14px;">
-          <summary>Raw Trajectory</summary>
+          <summary>Python Trajectory</summary>
           <pre class="traj-json" id="traj-json"></pre>
         </details>
+
+        <!-- Evaluate 비교 패널 -->
+        <div id="eval-section" class="hidden" style="margin-top:16px;">
+          <div class="card-title" style="margin-bottom:8px;">SFT 검증 — Trajectory 비교</div>
+          <div class="eval-panel">
+            <div class="eval-col python">
+              <div class="eval-col-title">Python Pipeline</div>
+              <div class="eval-meta">LangGraph 노드가 조립한 ground truth</div>
+              <details class="traj-details">
+                <summary>펼치기</summary>
+                <pre class="traj-json" id="eval-python-json"></pre>
+              </details>
+            </div>
+            <div class="eval-col llm">
+              <div class="eval-col-title">LoRA 모델 단독</div>
+              <div class="eval-meta" id="eval-llm-meta"></div>
+              <details class="traj-details">
+                <summary>펼치기</summary>
+                <pre class="traj-json" id="eval-llm-json"></pre>
+              </details>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- CAPA Table -->
@@ -325,6 +404,26 @@
   <script>
     let _lastResult = null;
     let _lastRequest = null;
+    let _modelMode = 'original';
+
+    async function loadModelInfo() {
+      try {
+        const res = await fetch('/api/v1/models');
+        const { base, lora } = await res.json();
+        document.getElementById('model-base-badge').textContent = base;
+        document.getElementById('model-base-desc').textContent = `${base} · Python pipeline + LLM narrative`;
+        document.getElementById('model-lora-badge').textContent = lora;
+        document.getElementById('model-lora-desc').textContent = `${base} + LoRA(${lora}) · 시스템 프롬프트 없이 자율 추론`;
+      } catch (e) { /* 로드 실패 시 HTML 기본값 유지 */ }
+    }
+    loadModelInfo();
+
+    function selectModel(mode) {
+      _modelMode = mode;
+      document.getElementById('btn-original').classList.toggle('selected', mode === 'original');
+      document.getElementById('btn-lora').classList.toggle('selected', mode === 'lora');
+      document.getElementById('btn-evaluate').classList.toggle('selected', mode === 'evaluate');
+    }
 
     // Default deadline: 2 weeks from today
     (() => {
@@ -353,7 +452,7 @@
       const product_code = document.getElementById('product_code').value;
       const required_quantity = parseInt(document.getElementById('required_quantity').value);
       const deadline = document.getElementById('deadline').value;
-      _lastRequest = { product_code, required_quantity, deadline };
+      _lastRequest = { product_code, required_quantity, deadline, model_mode: _modelMode };
 
       if (!product_code || !required_quantity || !deadline) {
         showError('모든 필드를 입력해주세요.'); return;
@@ -369,7 +468,7 @@
         const res = await fetch('/api/v1/capa', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ product_code, required_quantity, deadline }),
+          body: JSON.stringify({ product_code, required_quantity, deadline, model_mode: _modelMode }),
         });
         if (!res.ok) {
           const err = await res.json().catch(() => ({ detail: res.statusText }));
@@ -400,10 +499,13 @@
         machineText = '생산 불가';
       }
 
+      const modeBadge = _modelMode === 'lora'
+        ? '<span class="model-badge lora">LoRA 1.2B</span>'
+        : '<span class="model-badge original">7.8B</span>';
       document.getElementById('result-header').innerHTML = `
         <div class="judgment-badge ${ok ? 'ok' : 'fail'}">${ok ? '생산 가능' : '생산 불가'}</div>
         <div class="result-meta">
-          <div class="machine">${machineText}</div>
+          <div class="machine">${machineText} ${modeBadge}</div>
           <div class="reason">${data.selection_reason || ''}</div>
         </div>
       `;
@@ -437,6 +539,27 @@
 
       // Trajectory JSON
       document.getElementById('traj-json').textContent = JSON.stringify(data.full_state, null, 2);
+
+      // Evaluate: llm_trajectory 비교 패널
+      const evalSection = document.getElementById('eval-section');
+      document.getElementById('eval-python-json').textContent = JSON.stringify(data.full_state, null, 2);
+
+      if (data.llm_trajectory) {
+        const lt = data.llm_trajectory;
+        const successBadge = lt.parse_success
+          ? '<span class="chip ok">구조 파싱 성공</span>'
+          : '<span class="chip fail">구조 파싱 실패</span>';
+        const tokens = lt.tokens ? `${lt.tokens.prompt_tokens}→${lt.tokens.completion_tokens} tokens` : '-';
+        const durMs = lt.duration_ms != null ? `${lt.duration_ms.toLocaleString()}ms` : (lt.error === 'timeout' ? '타임아웃' : '-');
+        document.getElementById('eval-llm-meta').innerHTML =
+          `${successBadge} &nbsp; ${durMs} &nbsp; ${tokens}`;
+        document.getElementById('eval-llm-json').textContent =
+          JSON.stringify(lt.parsed && Object.keys(lt.parsed).length ? lt.parsed : lt.raw_output, null, 2);
+        evalSection.classList.remove('hidden');
+      } else {
+        evalSection.classList.add('hidden');
+      }
+
       document.getElementById('result-card').classList.remove('hidden');
 
       // CAPA table

@@ -5,6 +5,8 @@ from datetime import datetime, timezone, date, timedelta
 from typing import Optional, List
 from pathlib import Path
 
+import asyncio
+
 import aiomysql
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
@@ -14,7 +16,7 @@ from pydantic import BaseModel
 from agent.graph import capa_graph
 from agent.state import CapaAgentState
 from agent.tools import MES_API_URL
-from agent.nodes import LLM_MODEL
+from agent.nodes import LLM_BASE_MODEL, LLM_1B_MODEL, call_lora_full_trajectory
 
 app = FastAPI(title="Production CAPA Agent", version="1.0.0")
 
@@ -55,6 +57,7 @@ class CapaRequest(BaseModel):
     required_quantity: int
     deadline: str
     order_id: str = ""
+    model_mode: str = "original"  # "original" | "lora"
 
 
 class SaveRequest(BaseModel):
@@ -90,6 +93,7 @@ class CapaResponse(BaseModel):
     alternative_scenarios: object = None
     multi_machine_plan: Optional[dict] = None
     full_state: dict
+    llm_trajectory: Optional[dict] = None
 
 
 def _fmt_dt(dt: datetime) -> str:
@@ -161,7 +165,7 @@ def _build_trajectory(request: CapaRequest, result: dict, created_at: datetime, 
             "step_name": "가용 CAPA 기반 생산 가능 여부 추론 및 추천",
             "type": "llm_reasoning",
             "langgraph_node": "reasoning_node",
-            "model": LLM_MODEL,
+            "model": LLM_1B_MODEL if request.model_mode == "lora" else LLM_BASE_MODEL,
         },
         "step-004a": {
             "step_id": "step-004a",
@@ -175,7 +179,7 @@ def _build_trajectory(request: CapaRequest, result: dict, created_at: datetime, 
             "step_name": "다중 설비 조합 추천 이유 생성",
             "type": "llm_reasoning",
             "langgraph_node": "reasoning_node",
-            "model": LLM_MODEL,
+            "model": LLM_1B_MODEL if request.model_mode == "lora" else LLM_BASE_MODEL,
         },
         "step-005": {
             "step_id": "step-005",
@@ -266,6 +270,11 @@ async def health():
     return {"status": "ok"}
 
 
+@app.get("/api/v1/models")
+async def get_models():
+    return {"base": LLM_BASE_MODEL, "lora": LLM_1B_MODEL}
+
+
 @app.post("/api/v1/capa", response_model=CapaResponse)
 async def analyze_capa(request: CapaRequest):
     trajectory_id = f"traj-capa-{uuid.uuid4().hex[:8]}"
@@ -278,6 +287,7 @@ async def analyze_capa(request: CapaRequest):
         "required_quantity": request.required_quantity,
         "deadline": request.deadline,
         "today": datetime.now(timezone.utc).date().isoformat(),
+        "model_mode": request.model_mode,
         "mes_schedule": None,
         "mold_status": None,
         "capa_results": [],
@@ -296,12 +306,33 @@ async def analyze_capa(request: CapaRequest):
     }
 
     created_at = datetime.now(timezone.utc)
-    try:
-        result = await capa_graph.ainvoke(initial_state)
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
-    completed_at = datetime.now(timezone.utc)
 
+    if request.model_mode == "evaluate":
+        # pipeline과 LLM 병렬 실행
+        lora_task = asyncio.to_thread(
+            call_lora_full_trajectory,
+            request.product_code,
+            request.required_quantity,
+            request.deadline,
+        )
+        try:
+            result, llm_trajectory = await asyncio.gather(
+                capa_graph.ainvoke(initial_state),
+                asyncio.wait_for(lora_task, timeout=80),
+            )
+        except asyncio.TimeoutError:
+            result = await capa_graph.ainvoke(initial_state)
+            llm_trajectory = {"error": "timeout", "parse_success": False, "raw_output": "", "parsed": {}}
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=str(exc))
+    else:
+        try:
+            result = await capa_graph.ainvoke(initial_state)
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=str(exc))
+        llm_trajectory = None
+
+    completed_at = datetime.now(timezone.utc)
     trajectory = _build_trajectory(request, result, created_at, completed_at)
 
     return CapaResponse(
@@ -313,6 +344,7 @@ async def analyze_capa(request: CapaRequest):
         alternative_scenarios=result["alternative_scenarios"],
         multi_machine_plan=result.get("multi_machine_plan"),
         full_state=trajectory,
+        llm_trajectory=llm_trajectory,
     )
 
 

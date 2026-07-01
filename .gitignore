@@ -1,2 +1,5 @@
 trajectories/
 __pycache__/
+scripts/
+EXAONE-4.0-1.2B/
+exaone4-1.2b-lora

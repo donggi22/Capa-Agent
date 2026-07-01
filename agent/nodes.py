@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import time
 from datetime import datetime, timezone
 
@@ -8,13 +9,19 @@ from openai import OpenAI
 from .state import CapaAgentState
 from .tools import get_mes_production_schedule, get_mold_status, calculate_machine_capa, MES_API_URL
 
-llm_client = OpenAI(
+# 베이스 모델 클라이언트 — 로컬 GPU vLLM
+llm_client_base = OpenAI(
     base_url=os.getenv("LLM_API_URL", "http://localhost:8080/v1"),
     api_key="none",
 )
-# LLM_MODEL = os.getenv("LLM_MODEL", "EXAONE-3.5-7.8B-Instruct-AWQ")
-LLM_MODEL = os.getenv("LLM_MODEL", "EXAONE-3.5-7.8B-Instruct")
-LLM_MODEL = os.getenv("LLM_MODEL", "EXAONE-4.0-1.2B")
+LLM_BASE_MODEL = os.getenv("LLM_MODEL", "EXAONE-3.5-7.8B-Instruct")
+
+# NPU 클라이언트 — LoRA finetuned (Cloudflare Tunnel)
+llm_client_1b = OpenAI(
+    base_url=os.getenv("LLM_1B_API_URL", "http://localhost:8083/v1"),
+    api_key="none",
+)
+LLM_1B_MODEL = os.getenv("LLM_1B_MODEL", "finetuned")
 
 
 def _now() -> str:
@@ -164,13 +171,20 @@ def _find_combination(capa_results: list, adjusted_quantity: int) -> tuple:
 
 
 def _parse_llm_json(raw: str) -> dict:
-    cleaned = raw.strip()
-    if "```" in cleaned:
-        cleaned = cleaned.split("```")[1]
-        if cleaned.startswith("json"):
-            cleaned = cleaned[4:]
-        cleaned = cleaned.strip()
-    return json.loads(cleaned)
+    try:
+        if not raw:
+            return {}
+        cleaned = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL).strip()
+        if "```" in cleaned:
+            cleaned = cleaned.split("```")[1]
+            if cleaned.startswith("json"):
+                cleaned = cleaned[4:]
+            cleaned = cleaned.strip()
+        if not cleaned:
+            return {}
+        return json.loads(cleaned)
+    except Exception:
+        return {}
 
 
 def _build_selection_reason(best: dict, ranked: list, adjusted_quantity: int, top_cap: int) -> str:
@@ -308,6 +322,9 @@ def _metric_context(ranked: list) -> str:
 def reasoning_node(state: CapaAgentState) -> dict:
     capa_results = state["capa_results"]
     required_quantity = state["required_quantity"]
+    use_lora = state.get("model_mode", "original") == "lora"
+    active_client = llm_client_1b if use_lora else llm_client_base
+    active_model = LLM_1B_MODEL if use_lora else LLM_BASE_MODEL
     adjusted_quantity = capa_results[0].get("adjusted_quantity", required_quantity) if capa_results else required_quantity
 
     ranked = _multi_criteria_sort(capa_results)
@@ -416,7 +433,18 @@ def reasoning_node(state: CapaAgentState) -> dict:
 
         # ── step-004b: 조합 이유 LLM 생성 ────────────────────────────────
         machine_ids = [m["machine_id"] for m in combination]
-        prompt = f"""당신은 제조 생산 설비 추천 전문가입니다.
+        if use_lora:
+            prompt = f"""judgment=True
+{judgment_basis['reason']}
+
+required_quantity: {required_quantity:,}
+adjusted_quantity: {adjusted_quantity:,}
+selected_machines: {machine_ids}
+total_available_capacity: {sum(m['available_capacity'] for m in combination):,}
+
+{json.dumps(combination, ensure_ascii=False, indent=2)}"""
+        else:
+            prompt = f"""당신은 제조 생산 설비 추천 전문가입니다.
 시스템이 다음과 같이 판단했습니다: judgment=True (납기 내 생산 가능).
 {judgment_basis['reason']}
 
@@ -444,11 +472,12 @@ def reasoning_node(state: CapaAgentState) -> dict:
 
         llm_started_at = _now()
         t0_llm = time.perf_counter()
-        response = llm_client.chat.completions.create(
-            model=LLM_MODEL,
+        response = active_client.chat.completions.create(
+            model=active_model,
             messages=[{"role": "user", "content": prompt}],
             max_tokens=384,
             temperature=0.1,
+            extra_body={"stop_token_ids": [361]},
         )
         llm_duration_ms = int((time.perf_counter() - t0_llm) * 1000)
 
@@ -462,7 +491,7 @@ def reasoning_node(state: CapaAgentState) -> dict:
         reasoning = {
             "mode": "multi_machine",
             "recommended_machine": None,
-            "recommended_machines": llm_out["recommended_machines"],
+            "recommended_machines": llm_out.get("recommended_machines", machine_ids),
             "multi_machine_plan": combination,
             "selection_reason": _build_multi_selection_reason(combination, adjusted_quantity),
             "llm_narrative": llm_out.get("llm_narrative"),
@@ -470,7 +499,7 @@ def reasoning_node(state: CapaAgentState) -> dict:
             "candidate_filter": candidate_filter,
             "candidate_rank": candidate_rank,
             "final_decision": {
-                "recommended_machines": llm_out["recommended_machines"],
+                "recommended_machines": llm_out.get("recommended_machines", machine_ids),
                 "reason": "greedy_descending_capacity — 최소 설비 수로 adjusted_quantity 충족",
             },
             "decision_policy": decision_policy,
@@ -485,7 +514,7 @@ def reasoning_node(state: CapaAgentState) -> dict:
             "started_at": llm_started_at,
             "completed_at": _now(),
             "duration_ms": llm_duration_ms,
-            "model": LLM_MODEL,
+            "model": active_model,
             "temperature": 0.1,
             "input": {
                 "machine_ids": machine_ids,
@@ -507,7 +536,18 @@ def reasoning_node(state: CapaAgentState) -> dict:
         second_best = ranked[1] if len(ranked) > 1 else None
         candidate_rank_ctx = json.dumps(candidate_rank, ensure_ascii=False, indent=2)
         judgment_single = best["sufficient"]
-        prompt = f"""당신은 제조 생산 설비 추천 전문가입니다.
+        if use_lora:
+            prompt = f"""judgment={judgment_single}
+recommended_machine: {best["machine_id"]}
+available_capacity: {best["available_capacity"]:,}
+adjusted_quantity: {adjusted_quantity:,}
+required_quantity: {required_quantity:,}
+
+{candidate_rank_ctx}
+
+{metric_ctx}"""
+        else:
+            prompt = f"""당신은 제조 생산 설비 추천 전문가입니다.
 시스템이 다음과 같이 판단했습니다: judgment={judgment_single} ({'납기 내 생산 가능' if judgment_single else '납기 내 생산 불가'}).
 추천 설비: {best["machine_id"]} / sufficient={best["sufficient"]} / available_capacity={best["available_capacity"]:,} / adjusted_quantity={adjusted_quantity:,}
 
@@ -535,11 +575,12 @@ def reasoning_node(state: CapaAgentState) -> dict:
 
         llm_started_at = _now()
         t0_llm = time.perf_counter()
-        response = llm_client.chat.completions.create(
-            model=LLM_MODEL,
+        response = active_client.chat.completions.create(
+            model=active_model,
             messages=[{"role": "user", "content": prompt}],
             max_tokens=256,
             temperature=0.1,
+            extra_body={"stop_token_ids": [361]},
         )
         llm_duration_ms = int((time.perf_counter() - t0_llm) * 1000)
 
@@ -552,7 +593,7 @@ def reasoning_node(state: CapaAgentState) -> dict:
 
         reasoning = {
             "mode": "single_machine",
-            "recommended_machine": llm_out["recommended_machine"],
+            "recommended_machine": llm_out.get("recommended_machine", best["machine_id"]),
             "recommended_machines": None,
             "multi_machine_plan": None,
             "selection_reason": _build_selection_reason(best, ranked, adjusted_quantity, top_cap),
@@ -580,7 +621,7 @@ def reasoning_node(state: CapaAgentState) -> dict:
             "started_at": llm_started_at,
             "completed_at": _now(),
             "duration_ms": llm_duration_ms,
-            "model": LLM_MODEL,
+            "model": active_model,
             "temperature": 0.1,
             "input": {
                 "required_quantity": required_quantity,
@@ -747,7 +788,6 @@ def result_node(state: CapaAgentState) -> dict:
             "recommended_machine": recommended,
             "multi_machine_plan": multi_machine_plan,
             "alternative_scenarios": alternative_scenarios,
-            "capa_summary": capa_summary,
         },
         "error": None,
     }
@@ -761,4 +801,37 @@ def result_node(state: CapaAgentState) -> dict:
         "multi_machine_plan": multi_machine_plan,
         "step_traces": [trace],
         "langgraph_state": "completed",
+    }
+
+
+def call_lora_full_trajectory(product_code: str, required_quantity: int, deadline: str) -> dict:
+    """LoRA 모델에 raw request만 던져 전체 trajectory 생성 시도 (SFT 구조 검증용)."""
+    raw_input = json.dumps(
+        {"product_code": product_code, "required_quantity": required_quantity, "deadline": deadline},
+        ensure_ascii=False,
+    )
+
+    t0 = time.perf_counter()
+    response = llm_client_1b.chat.completions.create(
+        model=LLM_1B_MODEL,
+        messages=[{"role": "user", "content": raw_input}],
+        max_tokens=2048,
+        temperature=0.1,
+        extra_body={"stop_token_ids": [361]},
+    )
+    duration_ms = int((time.perf_counter() - t0) * 1000)
+
+    content = response.choices[0].message.content or ""
+    parsed = _parse_llm_json(content)
+
+    return {
+        "raw_output": content,
+        "parsed": parsed,
+        "parse_success": bool(parsed) and not parsed.get("parse_error"),
+        "duration_ms": duration_ms,
+        "tokens": {
+            "prompt_tokens": response.usage.prompt_tokens,
+            "completion_tokens": response.usage.completion_tokens,
+            "total_tokens": response.usage.total_tokens,
+        } if response.usage else None,
     }

@@ -1,0 +1,14 @@
+FROM vllm/vllm-openai:v0.9.2
+RUN pip install --upgrade transformers && \
+    sed -i 's/tokenizer\.all_special_tokens_extended/getattr(tokenizer, "all_special_tokens_extended", tokenizer.all_special_tokens)/g' \
+    /usr/local/lib/python3.12/dist-packages/vllm/transformers_utils/tokenizer.py && \
+    python3 -c "\
+f='/usr/local/lib/python3.12/dist-packages/vllm/model_executor/models/transformers.py';\
+t=open(f).read();\
+t=t.replace(\
+'((i + 1) % self.config.sliding_window_pattern > 0)',\
+'(self.config.sliding_window_pattern and (i + 1) % self.config.sliding_window_pattern > 0)'\
+);\
+open(f,'w').write(t)" && \
+    sed -i 's/AutoConfig.register("aimv2", AIMv2Config)/AutoConfig.register("aimv2", AIMv2Config, exist_ok=True)/' \
+    /usr/local/lib/python3.12/dist-packages/vllm/transformers_utils/configs/ovis.py
