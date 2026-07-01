@@ -19,26 +19,30 @@ services:
       retries: 5
       start_period: 30s
 
-  # ── vLLM: EXAONE-3.5-7.8B-Instruct AWQ (로컬 GPU) ──
-  llm:
-    image: vllm/vllm-openai:v0.9.2
-    pull_policy: if_not_present
+  # ── vLLM: EXAONE-4.0-1.2B + LoRA v3 (로컬 GPU) ──
+  llm-1.2b:
+    build:
+      context: .
+      dockerfile: Dockerfile.llm-1.2b
     runtime: nvidia
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
+      - TORCHDYNAMO_DISABLE=1
     volumes:
-      - ../EXAONE-3.5-7.8B-Instruct-AWQ:/models/EXAONE-3.5-7.8B-Instruct:ro
+      - ./EXAONE-4.0-1.2B:/models/EXAONE-4.0-1.2B:ro
+      - ./exaone4-1.2b-lora-v3:/models/exaone4-1.2b-lora-v3:ro
     command:
-      - --model=/models/EXAONE-3.5-7.8B-Instruct
-      - --served-model-name=EXAONE-3.5-7.8B-Instruct
-      - --quantization=awq
-      - --dtype=float16
-      - --max-model-len=4096
+      - --model=/models/EXAONE-4.0-1.2B
+      - --served-model-name=EXAONE-4.0-1.2B
+      - --enable-lora
+      - --lora-modules=finetuned=/models/exaone4-1.2b-lora-v3
+      - --dtype=bfloat16
+      - --max-model-len=8192
       - --port=8080
       - --trust-remote-code
-      - --gpu-memory-utilization=0.9
+      - --gpu-memory-utilization=0.85
     ports:
-      - "8080:8080"
+      - "8083:8080"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
@@ -71,38 +75,6 @@ services:
       timeout: 5s
       retries: 3
 
-  # ── vLLM: EXAONE-4.0-1.2B (base) + LoRA fine-tuned adapter ── (NPU 원격 사용 중, 로컬 비활성)
-  # llm-1.2b:
-  #   profiles: ["llm"]
-  #   build:
-  #     context: .
-  #     dockerfile: Dockerfile.llm-1.2b
-  #   runtime: nvidia
-  #   environment:
-  #     - NVIDIA_VISIBLE_DEVICES=all
-  #     - TORCHDYNAMO_DISABLE=1
-  #   volumes:
-  #     - ./EXAONE-4.0-1.2B:/models/EXAONE-4.0-1.2B:ro
-  #     - ./exaone4-1.2b-lora:/models/exaone4-1.2b-lora:ro
-  #   command:
-  #     - --model=/models/EXAONE-4.0-1.2B
-  #     - --served-model-name=EXAONE-4.0-1.2B
-  #     - --enable-lora
-  #     - --lora-modules=finetuned=/models/exaone4-1.2b-lora
-  #     - --dtype=bfloat16
-  #     - --max-model-len=4096
-  #     - --port=8080
-  #     - --trust-remote-code
-  #     - --gpu-memory-utilization=0.45
-  #   ports:
-  #     - "8083:8080"
-  #   healthcheck:
-  #     test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
-  #     interval: 30s
-  #     timeout: 10s
-  #     retries: 5
-  #     start_period: 60s
-
   # ── LangGraph CAPA Agent ──
   agent:
     build:
@@ -111,9 +83,9 @@ services:
     ports:
       - "8002:8000"
     environment:
-      - LLM_API_URL=http://llm:8080/v1
-      - LLM_MODEL=EXAONE-3.5-7.8B-Instruct
-      - LLM_1B_API_URL=https://utils-sent-scanned-stood.trycloudflare.com/v1
+      - LLM_API_URL=http://llm-1.2b:8080/v1
+      - LLM_MODEL=EXAONE-4.0-1.2B
+      - LLM_1B_API_URL=http://llm-1.2b:8080/v1
       - LLM_1B_MODEL=finetuned
       - MES_API_URL=http://mes-api:8001
       - DB_HOST=db
@@ -131,6 +103,8 @@ services:
       mes-api:
         condition: service_healthy
       db:
+        condition: service_healthy
+      llm-1.2b:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]

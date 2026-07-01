@@ -34,7 +34,7 @@ async def get_mold_status(product_code: str) -> tuple[int, dict, int]:
     return status_code, data, duration_ms
 
 
-async def calculate_machine_capa(
+async def get_machine_capa(
     machine_id: str,
     daily_working_hours: int,
     uph: int,

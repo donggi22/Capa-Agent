@@ -123,8 +123,9 @@
       font-size: 1rem; font-weight: 700;
       padding: 6px 18px; border-radius: 999px;
     }
-    .judgment-badge.ok   { background: #d4f5e3; color: #1a7a45; }
-    .judgment-badge.fail { background: #fde8e8; color: #c0392b; }
+    .judgment-badge.ok    { background: #d4f5e3; color: #1a7a45; }
+    .judgment-badge.multi { background: #dbeafe; color: #1d4ed8; }
+    .judgment-badge.fail  { background: #fde8e8; color: #c0392b; }
     .result-meta { display: flex; flex-direction: column; gap: 2px; }
     .result-meta .machine { font-size: 1.1rem; font-weight: 700; color: #4f6ef7; }
     .result-meta .reason  { font-size: 0.83rem; color: #777; max-width: 480px; }
@@ -486,24 +487,32 @@
     }
 
     function renderResult(data, required_quantity) {
-      const ok = data.judgment;
+      // 모드 판별
+      const isSingle = !!data.recommended_machine;
+      const isMulti  = !isSingle && !!(data.multi_machine_plan?.machines?.length);
+      const isFail   = !data.judgment;
 
-      // Result header
-      let machineText = '-';
-      if (data.recommended_machine) {
+      // 배지
+      const badgeClass = isSingle ? 'ok' : isMulti ? 'multi' : 'fail';
+      const badgeText  = isSingle ? '단일 설비 가능' : isMulti ? '조합 생산 가능' : '생산 불가';
+
+      // 설비 텍스트
+      let machineText;
+      if (isSingle) {
         machineText = data.recommended_machine + ' 추천';
-      } else if (data.multi_machine_plan) {
-        const machines = data.multi_machine_plan.recommended_machines || [];
-        machineText = machines.join(' + ') + ' 다중 추천';
-      } else if (!ok) {
-        machineText = '생산 불가';
+      } else if (isMulti) {
+        const ms = data.multi_machine_plan.recommended_machines || [];
+        machineText = ms.join(' + ') + ' 조합';
+      } else {
+        machineText = '납기 내 생산 불가';
       }
 
-      const modeBadge = _modelMode === 'lora'
-        ? '<span class="model-badge lora">LoRA 1.2B</span>'
-        : '<span class="model-badge original">7.8B</span>';
+      const modelLabel = _modelMode === 'lora' ? 'LoRA' : _modelMode === 'evaluate' ? 'Eval' : 'Base';
+      const modelBadgeClass = _modelMode === 'lora' ? 'lora' : _modelMode === 'evaluate' ? 'evaluate' : 'original';
+      const modeBadge = `<span class="model-badge ${modelBadgeClass}">${modelLabel}</span>`;
+
       document.getElementById('result-header').innerHTML = `
-        <div class="judgment-badge ${ok ? 'ok' : 'fail'}">${ok ? '생산 가능' : '생산 불가'}</div>
+        <div class="judgment-badge ${badgeClass}">${badgeText}</div>
         <div class="result-meta">
           <div class="machine">${machineText} ${modeBadge}</div>
           <div class="reason">${data.selection_reason || ''}</div>
@@ -571,11 +580,24 @@
 
       for (const m of (data.capa_summary || [])) {
         const isRec = recMachines.includes(m.machine_id);
+        const starLabel = isRec ? (isMulti ? '조합' : '추천') : '';
+
+        let suffChip;
+        if (m.sufficient) {
+          suffChip = '<span class="chip ok">단독 가능</span>';
+        } else if (isMulti && isRec) {
+          suffChip = '<span class="chip blue">조합 투입</span>';
+        } else if (isMulti) {
+          suffChip = '<span class="chip gray">미선정</span>';
+        } else {
+          suffChip = '<span class="chip fail">단독 불가</span>';
+        }
+
         tbody.innerHTML += `
           <tr>
             <td>
               <span class="machine-id ${isRec ? 'recommended' : ''}">${m.machine_id}</span>
-              ${isRec ? '<span class="star">추천</span>' : ''}
+              ${isRec ? `<span class="star">${starLabel}</span>` : ''}
             </td>
             <td class="num">${m.days_needed != null ? m.days_needed + '일' : '-'}</td>
             <td class="num">${(m.daily_capacity ?? 0).toLocaleString()}</td>
@@ -583,7 +605,7 @@
               ${(m.available_capacity ?? 0).toLocaleString()}
               <span style="font-size:0.75rem;color:#aaa"> / ${required_quantity.toLocaleString()}</span>
             </td>
-            <td><span class="chip ${m.sufficient ? 'ok' : 'fail'}">${m.sufficient ? '가능' : '불가'}</span></td>
+            <td>${suffChip}</td>
             <td><span class="chip ${m.mold_replacement_required ? 'warn' : 'gray'}">${m.mold_replacement_required ? '필요' : '불필요'}</span></td>
             <td class="num">${m.mold_replacement_required ? (m.change_time_min ?? '-') + '분' : '-'}</td>
           </tr>

@@ -2,21 +2,22 @@ import json
 import os
 import re
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date, timedelta
+
+import httpx
 
 from openai import OpenAI
 
 from .state import CapaAgentState
-from .tools import get_mes_production_schedule, get_mold_status, calculate_machine_capa, MES_API_URL
+from .tools import get_mes_production_schedule, get_mold_status, get_machine_capa, MES_API_URL
 
-# 베이스 모델 클라이언트 — 로컬 GPU vLLM
+# 동일 vLLM 서버 — base: EXAONE-4.0-1.2B / lora: finetuned (LoRA v3)
 llm_client_base = OpenAI(
-    base_url=os.getenv("LLM_API_URL", "http://localhost:8080/v1"),
+    base_url=os.getenv("LLM_API_URL", "http://localhost:8083/v1"),
     api_key="none",
 )
-LLM_BASE_MODEL = os.getenv("LLM_MODEL", "EXAONE-3.5-7.8B-Instruct")
+LLM_BASE_MODEL = os.getenv("LLM_MODEL", "EXAONE-4.0-1.2B")
 
-# NPU 클라이언트 — LoRA finetuned (Cloudflare Tunnel)
 llm_client_1b = OpenAI(
     base_url=os.getenv("LLM_1B_API_URL", "http://localhost:8083/v1"),
     api_key="none",
@@ -109,7 +110,7 @@ async def calculate_capa_node(state: dict) -> dict:
         "required_quantity": state["required_quantity"],
     }
 
-    status_code, result, _ = await calculate_machine_capa(**payload)
+    status_code, result, _ = await get_machine_capa(**payload)
     duration_ms = int((time.perf_counter() - t0) * 1000)
 
     trace = {
@@ -117,7 +118,7 @@ async def calculate_capa_node(state: dict) -> dict:
         "machine_id": state["machine_id"],
         "step_name": f"사출기별 가용 CAPA 계산 - {state['machine_id']}",
         "type": "tool_call",
-        "tool": "calculate_machine_capa",
+        "tool": "get_machine_capa",
         "langgraph_node": "calculate_capa_node",
         "langgraph_send": True,
         "started_at": started_at,
@@ -805,33 +806,186 @@ def result_node(state: CapaAgentState) -> dict:
 
 
 def call_lora_full_trajectory(product_code: str, required_quantity: int, deadline: str) -> dict:
-    """LoRA 모델에 raw request만 던져 전체 trajectory 생성 시도 (SFT 구조 검증용)."""
-    raw_input = json.dumps(
-        {"product_code": product_code, "required_quantity": required_quantity, "deadline": deadline},
-        ensure_ascii=False,
-    )
+    """LoRA ReAct 루프 — Action/Observation 멀티턴으로 Final Answer까지 진행."""
+    goal = {"product_code": product_code, "required_quantity": required_quantity, "deadline": deadline}
 
+    def _occupied_days(periods: list) -> int:
+        days = set()
+        for p in periods:
+            try:
+                d = date.fromisoformat(p.get("period_from") or p.get("from", ""))
+                end = date.fromisoformat(p.get("period_to") or p.get("to", ""))
+                while d <= end:
+                    days.add(d)
+                    d += timedelta(days=1)
+            except Exception:
+                pass
+        return len(days)
+
+    def _compress_mes(raw: list) -> list:
+        return [
+            {
+                "machine_id": m["machine_id"],
+                "daily_working_hours": m["daily_working_hours"],
+                "uph": m["uph"],
+                "current_product": m.get("current_product_code"),
+                "occupied_days": _occupied_days(m.get("scheduled_periods", [])),
+            }
+            for m in raw
+        ]
+
+    def _compress_mold(raw: dict) -> dict:
+        return {
+            "mold_id": raw.get("mold_id"),
+            "usage_count": raw.get("usage_count"),
+            "max_usage_count": raw.get("max_usage_count"),
+            "cavity_count": raw.get("cavity_count"),
+            "yield_rate": raw.get("yield_rate"),
+            "change_time_by_machine": {
+                e["machine_id"]: e["time_min"]
+                for e in raw.get("change_time_by_machine", [])
+            },
+        }
+
+    def _compress_capa(instances: dict) -> list:
+        return [
+            {
+                "machine_id": out.get("machine_id", key),
+                "actual_available_days": out.get("actual_available_days"),
+                "days_needed": out.get("days_needed"),
+                "daily_capacity": out.get("daily_capacity"),
+                "available_capacity": out.get("available_capacity"),
+                "sufficient": out.get("sufficient"),
+                "mold_replacement_required": out.get("mold_replacement_required"),
+                "replacement_reason": out.get("replacement_reason"),
+                "change_time_min": out.get("change_time_min"),
+            }
+            for key, inst in instances.items()
+            for out in [inst.get("output", {})]
+        ]
+
+    mes_raw = None
+    mold_raw = None
+
+    _ACTION_ALIASES = {
+        "calculate_machine_capa": "get_machine_capa",
+        "get_capa": "get_machine_capa",
+        "calculate_capa": "get_machine_capa",
+        "get_mold_replace_time": "get_mold_status",
+        "get_mold_change_time": "get_mold_status",
+        "get_mold_info": "get_mold_status",
+    }
+
+    def _tool_call(action: str, action_input: dict) -> str:
+        nonlocal mes_raw, mold_raw
+        action = _ACTION_ALIASES.get(action, action)
+        with httpx.Client(timeout=10.0) as client:
+            if action == "get_mes_production_schedule":
+                r = client.get(f"{MES_API_URL}/schedule", params=action_input)
+                r.raise_for_status()
+                mes_raw = r.json()
+                return json.dumps(_compress_mes(mes_raw), ensure_ascii=False)
+
+            elif action == "get_mold_status":
+                r = client.get(f"{MES_API_URL}/mold", params=action_input)
+                r.raise_for_status()
+                mold_raw = r.json()
+                return json.dumps(_compress_mold(mold_raw), ensure_ascii=False)
+
+            elif action == "get_machine_capa":
+                if mes_raw is None or mold_raw is None:
+                    return json.dumps({"error": "missing mes or mold data"})
+                change_map = {e["machine_id"]: e["time_min"] for e in mold_raw.get("change_time_by_machine", [])}
+                instances = {}
+                for m in mes_raw:
+                    mid = m["machine_id"]
+                    payload = {
+                        "machine_id": mid,
+                        "daily_working_hours": m["daily_working_hours"],
+                        "uph": m["uph"],
+                        "current_mold": next(
+                            (e["current_mold"] for e in mold_raw.get("change_time_by_machine", [])
+                             if e["machine_id"] == mid), None
+                        ),
+                        "target_mold_id": mold_raw.get("mold_id"),
+                        "change_time_min": change_map.get(mid, 0),
+                        "usage_count": mold_raw.get("usage_count"),
+                        "max_usage_count": mold_raw.get("max_usage_count"),
+                        "cavity_count": mold_raw.get("cavity_count"),
+                        "yield_rate": mold_raw.get("yield_rate"),
+                        "scheduled_periods": m.get("scheduled_periods", []),
+                        "deadline": deadline,
+                        "today": date.today().isoformat(),
+                        "required_quantity": required_quantity,
+                    }
+                    r = client.post(f"{MES_API_URL}/capa", json=payload)
+                    r.raise_for_status()
+                    instances[mid] = {"output": r.json()}
+                return json.dumps(_compress_capa(instances), ensure_ascii=False)
+
+        return json.dumps({"error": f"unknown action: {action}"})
+
+    def _parse_action(text: str) -> tuple:
+        lines = text.strip().split("\n", 1)
+        action = lines[0].replace("Action:", "").strip()
+        if len(lines) < 2 or action == "get_machine_capa":
+            return action, {}
+        try:
+            return action, json.loads(lines[1])
+        except Exception:
+            return action, {}
+
+    messages = [{"role": "user", "content": json.dumps(goal, ensure_ascii=False)}]
     t0 = time.perf_counter()
-    response = llm_client_1b.chat.completions.create(
-        model=LLM_1B_MODEL,
-        messages=[{"role": "user", "content": raw_input}],
-        max_tokens=2048,
-        temperature=0.1,
-        extra_body={"stop_token_ids": [361]},
-    )
+    total_prompt = total_completion = 0
+
+    for turn in range(8):
+        response = llm_client_1b.chat.completions.create(
+            model=LLM_1B_MODEL,
+            messages=messages,
+            max_tokens=2048,
+            temperature=0.1,
+            extra_body={"stop_token_ids": [361]},
+        )
+        if response.usage:
+            total_prompt += response.usage.prompt_tokens
+            total_completion += response.usage.completion_tokens
+
+        content = response.choices[0].message.content or ""
+        messages.append({"role": "assistant", "content": content})
+
+        if content.startswith("Final Answer:"):
+            result_str = content[len("Final Answer:"):].strip()
+            duration_ms = int((time.perf_counter() - t0) * 1000)
+            try:
+                parsed = json.loads(result_str)
+                parse_success = True
+            except json.JSONDecodeError:
+                parsed = {}
+                parse_success = False
+            return {
+                "raw_output": content,
+                "parsed": parsed,
+                "parse_success": parse_success,
+                "duration_ms": duration_ms,
+                "turns": turn + 1,
+                "tokens": {"prompt_tokens": total_prompt, "completion_tokens": total_completion, "total_tokens": total_prompt + total_completion},
+            }
+
+        action, action_input = _parse_action(content)
+        try:
+            observation = _tool_call(action, action_input)
+        except Exception as e:
+            observation = json.dumps({"error": str(e)}, ensure_ascii=False)
+        messages.append({"role": "user", "content": f"Observation: {observation}"})
+
     duration_ms = int((time.perf_counter() - t0) * 1000)
-
-    content = response.choices[0].message.content or ""
-    parsed = _parse_llm_json(content)
-
     return {
-        "raw_output": content,
-        "parsed": parsed,
-        "parse_success": bool(parsed) and not parsed.get("parse_error"),
+        "raw_output": "",
+        "parsed": {},
+        "parse_success": False,
         "duration_ms": duration_ms,
-        "tokens": {
-            "prompt_tokens": response.usage.prompt_tokens,
-            "completion_tokens": response.usage.completion_tokens,
-            "total_tokens": response.usage.total_tokens,
-        } if response.usage else None,
+        "turns": 8,
+        "error": "max_turns exceeded",
+        "tokens": {"prompt_tokens": total_prompt, "completion_tokens": total_completion, "total_tokens": total_prompt + total_completion},
     }

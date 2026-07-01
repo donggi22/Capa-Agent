@@ -3,3 +3,6 @@ __pycache__/
 scripts/
 EXAONE-4.0-1.2B/
 exaone4-1.2b-lora
+EXAONE-3.5-7.8B-Instruct
+exaone-3.5-7.8b-instruct-lora-v3-full
+exaone4-1.2b-lora-v3

@@ -123,7 +123,7 @@ def _build_trajectory(request: CapaRequest, result: dict, created_at: datetime, 
         wall_ms = int((max(ends) - min(starts)).total_seconds() * 1000)
         step_003_state = {
             "type": "tool_call",
-            "tool": "calculate_machine_capa",
+            "tool": "get_machine_capa",
             "langgraph_send": True,
             "wall_clock_ms": wall_ms,
             "instances": instances,
@@ -154,7 +154,7 @@ def _build_trajectory(request: CapaRequest, result: dict, created_at: datetime, 
             "step_id": "step-003",
             "step_name": "사출기별 가용 CAPA 계산",
             "type": "tool_call",
-            "tool": "calculate_machine_capa",
+            "tool": "get_machine_capa",
             "langgraph_node": "calculate_capa_node",
             "langgraph_send": True,
             "api_endpoint": f"{MES_API_URL}/capa",
@@ -320,6 +320,7 @@ async def analyze_capa(request: CapaRequest):
                 capa_graph.ainvoke(initial_state),
                 asyncio.wait_for(lora_task, timeout=80),
             )
+            print(f"[LoRA] turns={llm_trajectory.get('turns')} parse={llm_trajectory.get('parse_success')} ms={llm_trajectory.get('duration_ms')} tokens={llm_trajectory.get('tokens')}", flush=True)
         except asyncio.TimeoutError:
             result = await capa_graph.ainvoke(initial_state)
             llm_trajectory = {"error": "timeout", "parse_success": False, "raw_output": "", "parsed": {}}
